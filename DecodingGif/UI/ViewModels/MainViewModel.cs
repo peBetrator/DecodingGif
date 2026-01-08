@@ -5,6 +5,7 @@ using DecodingGif.Core.Parsing;
 using DecodingGif.Core.Services;
 using Microsoft.Win32;
 using System.Windows.Input;
+using System.Collections.ObjectModel;
 
 namespace DecodingGif.UI.ViewModels;
 
@@ -12,6 +13,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
 {
     private readonly FileLoader _fileLoader = new();
     private readonly GifParser _parser = new();
+    private readonly HexRowsBuilder _hexBuilder = new();
+
+    private ObservableCollection<HexRow> _hexRows = new();
+    public ObservableCollection<HexRow> HexRows
+    {
+        get => _hexRows;
+        private set { _hexRows = value; OnPropertyChanged(); }
+    }
 
     private GifFile? _currentFile;
     public GifFile? CurrentFile
@@ -66,10 +75,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             var bytes = _fileLoader.LoadAllBytes(dlg.FileName);
             CurrentFile = _parser.Parse(dlg.FileName, bytes);
+
+            HexRows = _hexBuilder.Build(bytes);
         }
         catch (Exception ex)
         {
             CurrentFile = null;
+            HexRows = new ObservableCollection<HexRow>();
             ErrorText = ex.Message;
         }
     }

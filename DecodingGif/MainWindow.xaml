@@ -5,19 +5,63 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:DecodingGif.UI.ViewModels"
         mc:Ignorable="d"
-        Title="DecodingGif" Height="200" Width="700">
+        Title="DecodingGif" Height="600" Width="1100">
 
     <Window.DataContext>
         <vm:MainViewModel />
     </Window.DataContext>
 
     <DockPanel Margin="12">
-        <Button DockPanel.Dock="Top"
-                Content="Open GIF"
-                Command="{Binding OpenFileCommand}"
-                Height="32"
-                Margin="0,0,0,10"/>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+            <Button Content="Open GIF" Command="{Binding OpenFileCommand}" Height="32" Width="120"/>
+            <TextBlock Text="{Binding StatusText}" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
+        </StackPanel>
 
-        <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap"/>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*"/>
+                <ColumnDefinition Width="2*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- HEX VIEW -->
+            <DataGrid Grid.Column="0"
+                      ItemsSource="{Binding HexRows}"
+                      IsReadOnly="True"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      HeadersVisibility="Column"
+                      SelectionMode="Single"
+                      SelectionUnit="FullRow">
+
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Offset" Binding="{Binding OffsetHex}" Width="80"/>
+
+                    <DataGridTextColumn Header="00" Binding="{Binding B00}" Width="40"/>
+                    <DataGridTextColumn Header="01" Binding="{Binding B01}" Width="40"/>
+                    <DataGridTextColumn Header="02" Binding="{Binding B02}" Width="40"/>
+                    <DataGridTextColumn Header="03" Binding="{Binding B03}" Width="40"/>
+                    <DataGridTextColumn Header="04" Binding="{Binding B04}" Width="40"/>
+                    <DataGridTextColumn Header="05" Binding="{Binding B05}" Width="40"/>
+                    <DataGridTextColumn Header="06" Binding="{Binding B06}" Width="40"/>
+                    <DataGridTextColumn Header="07" Binding="{Binding B07}" Width="40"/>
+                    <DataGridTextColumn Header="08" Binding="{Binding B08}" Width="40"/>
+                    <DataGridTextColumn Header="09" Binding="{Binding B09}" Width="40"/>
+                    <DataGridTextColumn Header="0A" Binding="{Binding B10}" Width="40"/>
+                    <DataGridTextColumn Header="0B" Binding="{Binding B11}" Width="40"/>
+                    <DataGridTextColumn Header="0C" Binding="{Binding B12}" Width="40"/>
+                    <DataGridTextColumn Header="0D" Binding="{Binding B13}" Width="40"/>
+                    <DataGridTextColumn Header="0E" Binding="{Binding B14}" Width="40"/>
+                    <DataGridTextColumn Header="0F" Binding="{Binding B15}" Width="40"/>
+
+                    <DataGridTextColumn Header="ASCII" Binding="{Binding Ascii}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- RIGHT PANEL (пока просто статус) -->
+            <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                <TextBlock Text="Info" FontWeight="Bold" Margin="0,0,0,6"/>
+                <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Grid>
     </DockPanel>
 </Window>
