@@ -52,6 +52,16 @@ public sealed class HexCellBackgroundConverter : IMultiValueConverter
             GifBlockKind.Header => Brushes.LightSkyBlue,
             GifBlockKind.LogicalScreenDescriptor => Brushes.LightGreen,
             GifBlockKind.GlobalColorTable => Brushes.LightPink,
+
+            GifBlockKind.GraphicControlExtension => Brushes.Plum,
+            GifBlockKind.ApplicationExtension => Brushes.Khaki,
+
+            GifBlockKind.ImageDescriptor => Brushes.LightSteelBlue,
+            GifBlockKind.LocalColorTable => Brushes.LightSalmon,
+            GifBlockKind.ImageData => Brushes.LightGray,
+
+            GifBlockKind.Trailer => Brushes.LightCyan,
+
             _ => Brushes.Transparent
         };
     }
