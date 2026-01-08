@@ -4,8 +4,13 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:DecodingGif.UI.ViewModels"
+        xmlns:conv="clr-namespace:DecodingGif.UI.Converters"
         mc:Ignorable="d"
         Title="DecodingGif" Height="600" Width="1100">
+
+    <Window.Resources>
+        <conv:HexCellBackgroundConverter x:Key="HexCellBackgroundConverter"/>
+    </Window.Resources>
 
     <Window.DataContext>
         <vm:MainViewModel />
@@ -34,6 +39,25 @@
                 SelectionMode="Single"
                 SelectionUnit="Cell"
                 SelectedCellsChanged="HexGrid_SelectedCellsChanged">
+
+                <DataGrid.CellStyle>
+                    <Style TargetType="DataGridCell">
+                        <Setter Property="Background">
+                            <Setter.Value>
+                                <MultiBinding Converter="{StaticResource HexCellBackgroundConverter}">
+                                    <!-- 0: row offset -->
+                                    <Binding Path="Offset"/>
+                                    <!-- 1: column header -->
+                                    <Binding RelativeSource="{RelativeSource Self}" Path="Column.Header"/>
+                                    <!-- 2: blocks list -->
+                                    <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.Blocks"/>
+                                    <!-- 3: selected byte offset (optional) -->
+                                    <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.SelectedByte.Offset"/>
+                                </MultiBinding>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </DataGrid.CellStyle>
 
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Offset" Binding="{Binding OffsetHex}" Width="80"/>
@@ -74,6 +98,15 @@
                     <TextBlock Text="{Binding ValueDec, StringFormat=Value (dec): {0}}" Margin="0,2,0,0"/>
                     <TextBlock Text="{Binding Ascii, StringFormat=ASCII: {0}}" Margin="0,8,0,0"/>
                 </StackPanel>
+                <TextBlock Text="Meaning:" FontWeight="Bold" Margin="0,14,0,6"/>
+                <TextBlock Text="{Binding SelectedByteMeaning}" TextWrapping="Wrap"/>
+
+                <TextBlock Text="Structure:" FontWeight="Bold" Margin="0,14,0,6"/>
+
+                <ListBox x:Name="BlocksList"
+                    ItemsSource="{Binding Blocks}"
+                    SelectionChanged="BlocksList_SelectionChanged"
+                    Height="140"/>
 
                 <!-- Когда ничего не выбрано, блок будет пустым. Это норм. -->
             </StackPanel>

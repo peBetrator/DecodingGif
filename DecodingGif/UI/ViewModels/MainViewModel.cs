@@ -14,6 +14,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly FileLoader _fileLoader = new();
     private readonly GifParser _parser = new();
     private readonly HexRowsBuilder _hexBuilder = new();
+    private readonly GifStructureService _structure = new();
 
     private ObservableCollection<HexRow> _hexRows = new();
     public ObservableCollection<HexRow> HexRows
@@ -29,11 +30,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set { _selectedByte = value; OnPropertyChanged(); }
     }
 
+    private string? _selectedByteMeaning;
+    public string? SelectedByteMeaning
+    {
+        get => _selectedByteMeaning;
+        private set { _selectedByteMeaning = value; OnPropertyChanged(); }
+    }
+
     private GifFile? _currentFile;
     public GifFile? CurrentFile
     {
         get => _currentFile;
         private set { _currentFile = value; OnPropertyChanged(); OnPropertyChanged(nameof(StatusText)); }
+    }
+
+    private ObservableCollection<GifByteRange> _blocks = new();
+    public ObservableCollection<GifByteRange> Blocks
+    {
+        get => _blocks;
+        private set { _blocks = value; OnPropertyChanged(); }
     }
 
     private string? _errorText;
@@ -69,6 +84,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         ErrorText = null;
         SelectedByte = null;
+        SelectedByteMeaning = null;
 
         var dlg = new OpenFileDialog
         {
@@ -84,6 +100,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var bytes = _fileLoader.LoadAllBytes(dlg.FileName);
             CurrentFile = _parser.Parse(dlg.FileName, bytes);
 
+            var ranges = _structure.BuildRanges(CurrentFile);
+            Blocks = new ObservableCollection<GifByteRange>(ranges);
+
             HexRows = _hexBuilder.Build(bytes);
         }
         catch (Exception ex)
@@ -91,6 +110,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             CurrentFile = null;
             HexRows = new ObservableCollection<HexRow>();
             ErrorText = ex.Message;
+            Blocks = new ObservableCollection<GifByteRange>();
+            SelectedByteMeaning = null;
         }
     }
 
@@ -121,6 +142,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ValueDec: value,
             Ascii: ascii
         );
+        SelectedByteMeaning = _structure.DescribeOffset(CurrentFile, offset);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

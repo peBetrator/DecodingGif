@@ -12,6 +12,26 @@ public partial class MainWindow
         InitializeComponent();
     }
 
+    private void BlocksList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        if (BlocksList.SelectedItem is not GifByteRange range)
+            return;
+
+        // Скроллим к началу диапазона
+        int rowIndex = range.Start / 16;
+        if (rowIndex < 0 || rowIndex >= vm.HexRows.Count)
+            return;
+
+        var rowItem = vm.HexRows[rowIndex];
+        HexGrid.ScrollIntoView(rowItem);
+
+        // Выбираем первый байт диапазона (для инфо панели)
+        vm.SelectByte(range.Start);
+    }
+
     private void HexGrid_SelectedCellsChanged(object sender, SelectedCellsChangedEventArgs e)
     {
         if (DataContext is not MainViewModel vm)
