@@ -24,14 +24,16 @@
             </Grid.ColumnDefinitions>
 
             <!-- HEX VIEW -->
-            <DataGrid Grid.Column="0"
-                      ItemsSource="{Binding HexRows}"
-                      IsReadOnly="True"
-                      AutoGenerateColumns="False"
-                      CanUserAddRows="False"
-                      HeadersVisibility="Column"
-                      SelectionMode="Single"
-                      SelectionUnit="FullRow">
+            <DataGrid x:Name="HexGrid"
+                Grid.Column="0"
+                ItemsSource="{Binding HexRows}"
+                IsReadOnly="True"
+                AutoGenerateColumns="False"
+                CanUserAddRows="False"
+                HeadersVisibility="Column"
+                SelectionMode="Single"
+                SelectionUnit="Cell"
+                SelectedCellsChanged="HexGrid_SelectedCellsChanged">
 
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Offset" Binding="{Binding OffsetHex}" Width="80"/>
@@ -57,10 +59,23 @@
                 </DataGrid.Columns>
             </DataGrid>
 
-            <!-- RIGHT PANEL (пока просто статус) -->
+            <!-- RIGHT PANEL -->
             <StackPanel Grid.Column="1" Margin="12,0,0,0">
                 <TextBlock Text="Info" FontWeight="Bold" Margin="0,0,0,6"/>
-                <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap"/>
+
+                <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+                <TextBlock Text="Selected byte:" FontWeight="Bold" Margin="0,0,0,6"/>
+
+                <StackPanel DataContext="{Binding SelectedByte}">
+                    <TextBlock Text="{Binding OffsetHex, StringFormat=Offset (hex): {0}}" />
+                    <TextBlock Text="{Binding Offset, StringFormat=Offset (dec): {0}}" Margin="0,2,0,0"/>
+                    <TextBlock Text="{Binding ValueHex, StringFormat=Value (hex): {0}}" Margin="0,8,0,0"/>
+                    <TextBlock Text="{Binding ValueDec, StringFormat=Value (dec): {0}}" Margin="0,2,0,0"/>
+                    <TextBlock Text="{Binding Ascii, StringFormat=ASCII: {0}}" Margin="0,8,0,0"/>
+                </StackPanel>
+
+                <!-- Когда ничего не выбрано, блок будет пустым. Это норм. -->
             </StackPanel>
         </Grid>
     </DockPanel>

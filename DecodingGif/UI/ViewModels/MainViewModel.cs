@@ -22,6 +22,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set { _hexRows = value; OnPropertyChanged(); }
     }
 
+    private ByteSelectionInfo? _selectedByte;
+    public ByteSelectionInfo? SelectedByte
+    {
+        get => _selectedByte;
+        private set { _selectedByte = value; OnPropertyChanged(); }
+    }
+
     private GifFile? _currentFile;
     public GifFile? CurrentFile
     {
@@ -61,6 +68,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void OpenFile()
     {
         ErrorText = null;
+        SelectedByte = null;
 
         var dlg = new OpenFileDialog
         {
@@ -84,6 +92,35 @@ public sealed class MainViewModel : INotifyPropertyChanged
             HexRows = new ObservableCollection<HexRow>();
             ErrorText = ex.Message;
         }
+    }
+
+    public void SelectByte(int offset)
+    {
+        if (CurrentFile is null)
+        {
+            SelectedByte = null;
+            return;
+        }
+
+        var bytes = CurrentFile.Bytes;
+
+        if (offset < 0 || offset >= bytes.Length)
+        {
+            SelectedByte = null;
+            return;
+        }
+
+        byte value = bytes[offset];
+        string ascii = value is >= 0x20 and <= 0x7E ? ((char)value).ToString() : ".";
+
+        SelectedByte = new ByteSelectionInfo(
+            Offset: offset,
+            OffsetHex: offset.ToString("X8"),
+            Value: value,
+            ValueHex: value.ToString("X2"),
+            ValueDec: value,
+            Ascii: ascii
+        );
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
