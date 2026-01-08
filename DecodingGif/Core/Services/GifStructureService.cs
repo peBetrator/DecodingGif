@@ -132,6 +132,168 @@ public sealed class GifStructureService
         return ranges;
     }
 
+    public IReadOnlyList<GifStructureNode> BuildStructureTree(GifFile file)
+    {
+        var bytes = file.Bytes;
+
+        var roots = new List<GifStructureNode>();
+
+        // Корневые блоки
+        var header = new GifStructureNode("Header", new GifByteRange(GifBlockKind.Header, "Header", 0, 6));
+        var lsd = new GifStructureNode("Logical Screen Descriptor (LSD)", new GifByteRange(GifBlockKind.LogicalScreenDescriptor, "LSD", 6, 7));
+
+        roots.Add(header);
+        roots.Add(lsd);
+
+        // GCT
+        int offset = 13;
+        if (file.Screen.GlobalColorTableFlag)
+        {
+            int gctSize = file.Screen.GlobalColorTableSize;
+            int gctLen = 3 * gctSize;
+            var gctRange = new GifByteRange(GifBlockKind.GlobalColorTable, $"GCT x{gctSize}", offset, Math.Min(gctLen, Math.Max(0, bytes.Length - offset)));
+            roots.Add(new GifStructureNode($"Global Color Table (GCT) x{gctSize}", gctRange));
+
+            // Если обрезано - дальше смысла сканировать нет
+            if (offset + gctLen > bytes.Length)
+                return roots;
+
+            offset += gctLen;
+        }
+
+        // Frames group node
+        var framesRoot = new GifStructureNode("Frames");
+        roots.Add(framesRoot);
+
+        int frameIndex = -1;
+        GifStructureNode? currentFrameNode = null;
+
+        // В GIF GCE относится к *следующему* Image Descriptor
+        GifByteRange? pendingGce = null;
+
+        // Скан по блокам до Trailer
+        while (offset < bytes.Length)
+        {
+            byte b = bytes[offset];
+
+            // Trailer
+            if (b == 0x3B)
+            {
+                roots.Add(new GifStructureNode("Trailer (0x3B)", new GifByteRange(GifBlockKind.Trailer, "Trailer", offset, 1)));
+                break;
+            }
+
+            // Extensions
+            if (b == 0x21)
+            {
+                if (offset + 1 >= bytes.Length)
+                {
+                    // обрыв
+                    var unk = new GifStructureNode("Extension (truncated)", new GifByteRange(GifBlockKind.Unknown, "Extension", offset, bytes.Length - offset));
+                    // закинем либо в frame, либо в корень
+                    (currentFrameNode ?? framesRoot).Children.Add(unk);
+                    break;
+                }
+
+                byte label = bytes[offset + 1];
+
+                if (label == 0xF9) // GCE
+                {
+                    int len = ReadGraphicControlExtensionLength(bytes, offset);
+                    pendingGce = new GifByteRange(GifBlockKind.GraphicControlExtension, "GCE", offset, len);
+                    offset += len;
+                    continue;
+                }
+
+                if (label == 0xFF) // AppExt
+                {
+                    int len = ReadApplicationExtensionLength(bytes, offset);
+                    var node = new GifStructureNode("Application Extension (AppExt)", new GifByteRange(GifBlockKind.ApplicationExtension, "AppExt", offset, len));
+                    // обычно это глобальная штука, но может встретиться и внутри потока
+                    framesRoot.Children.Add(node);
+                    offset += len;
+                    continue;
+                }
+
+                // прочие расширения (пока как Unknown, но структурно показываем)
+                int genericLen = ReadGenericExtensionLength(bytes, offset);
+                var extNode = new GifStructureNode($"Extension (0x21 0x{label:X2})",
+                    new GifByteRange(GifBlockKind.Unknown, $"Ext 0x{label:X2}", offset, genericLen));
+
+                // чаще всего расширения логически относятся к потоку кадров
+                (currentFrameNode ?? framesRoot).Children.Add(extNode);
+                offset += genericLen;
+                continue;
+            }
+
+            // Image Descriptor => начало нового кадра
+            if (b == 0x2C)
+            {
+                if (offset + 10 > bytes.Length)
+                {
+                    var trunc = new GifStructureNode("Image Descriptor (truncated)",
+                        new GifByteRange(GifBlockKind.ImageDescriptor, "Image Descriptor (truncated)", offset, bytes.Length - offset));
+                    (currentFrameNode ?? framesRoot).Children.Add(trunc);
+                    break;
+                }
+
+                frameIndex++;
+                currentFrameNode = new GifStructureNode($"Frame {frameIndex}");
+                framesRoot.Children.Add(currentFrameNode);
+
+                // Если перед кадром был GCE — прикрепляем к кадру
+                if (pendingGce is not null)
+                {
+                    currentFrameNode.Children.Add(new GifStructureNode("Graphic Control Extension (GCE)", pendingGce));
+                    pendingGce = null;
+                }
+
+                // Image Descriptor
+                var idRange = new GifByteRange(GifBlockKind.ImageDescriptor, "Image Descriptor", offset, 10);
+                currentFrameNode.Children.Add(new GifStructureNode("Image Descriptor", idRange));
+
+                byte packed = bytes[offset + 9];
+                bool lctFlag = (packed & 0b1000_0000) != 0;
+                int lctSize = 1 << ((packed & 0b0000_0111) + 1);
+
+                offset += 10;
+
+                // LCT (если есть)
+                if (lctFlag)
+                {
+                    int lctLen = 3 * lctSize;
+
+                    int safeLen = Math.Min(lctLen, Math.Max(0, bytes.Length - offset));
+                    var lctRange = new GifByteRange(GifBlockKind.LocalColorTable, $"LCT x{lctSize}", offset, safeLen);
+                    currentFrameNode.Children.Add(new GifStructureNode($"Local Color Table (LCT) x{lctSize}", lctRange));
+
+                    if (offset + lctLen > bytes.Length)
+                        break;
+
+                    offset += lctLen;
+                }
+
+                // Image Data
+                int imgLen = ReadImageDataLength(bytes, offset);
+                var imgRange = new GifByteRange(GifBlockKind.ImageData, "Image Data", offset, Math.Min(imgLen, Math.Max(0, bytes.Length - offset)));
+                currentFrameNode.Children.Add(new GifStructureNode("Image Data (LZW sub-blocks)", imgRange));
+
+                offset += imgLen;
+                continue;
+            }
+
+            // если встречаем мусор, не зацикливаемся
+            var unknown = new GifStructureNode($"Unknown byte 0x{b:X2}",
+                new GifByteRange(GifBlockKind.Unknown, $"Unknown 0x{b:X2}", offset, 1));
+
+            (currentFrameNode ?? framesRoot).Children.Add(unknown);
+            offset += 1;
+        }
+
+        // Если framesRoot пустой (например, статический GIF без картинок быть не может, но вдруг файл битый),
+        // можно удалить его, но я бы оставил для стабильности UI.
+        return roots;
+    }
     public string DescribeOffset(GifFile file, int offset)
     {
         if (offset < 0 || offset >= file.Bytes.Length)

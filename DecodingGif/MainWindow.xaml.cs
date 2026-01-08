@@ -2,6 +2,7 @@
 using System.Windows.Controls;
 using DecodingGif.UI.ViewModels;
 using DecodingGif.Core.Models;
+using System.Windows;
 
 namespace DecodingGif;
 
@@ -12,24 +13,26 @@ public partial class MainWindow
         InitializeComponent();
     }
 
-    private void BlocksList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void StructureTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
         if (DataContext is not MainViewModel vm)
             return;
 
-        if (BlocksList.SelectedItem is not GifByteRange range)
+        if (e.NewValue is not GifStructureNode node)
             return;
 
-        // Скроллим к началу диапазона
-        int rowIndex = range.Start / 16;
-        if (rowIndex < 0 || rowIndex >= vm.HexRows.Count)
-            return;
+        if (node.Range is null)
+            return; // например "Frames" или "Frame N"
 
-        var rowItem = vm.HexRows[rowIndex];
-        HexGrid.ScrollIntoView(rowItem);
+        int start = node.Range.Start;
 
-        // Выбираем первый байт диапазона (для инфо панели)
-        vm.SelectByte(range.Start);
+        int rowIndex = start / 16;
+        if (rowIndex >= 0 && rowIndex < vm.HexRows.Count)
+        {
+            HexGrid.ScrollIntoView(vm.HexRows[rowIndex]);
+        }
+
+        vm.SelectByte(start);
     }
 
     private void HexGrid_SelectedCellsChanged(object sender, SelectedCellsChangedEventArgs e)

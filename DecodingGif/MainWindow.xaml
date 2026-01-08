@@ -6,7 +6,7 @@
         xmlns:vm="clr-namespace:DecodingGif.UI.ViewModels"
         xmlns:conv="clr-namespace:DecodingGif.UI.Converters"
         mc:Ignorable="d"
-        Title="DecodingGif" Height="600" Width="1100">
+        Title="DecodingGif" Height="700" Width="1400">
 
     <Window.Resources>
         <conv:HexCellBackgroundConverter x:Key="HexCellBackgroundConverter"/>
@@ -103,10 +103,16 @@
 
                 <TextBlock Text="Structure:" FontWeight="Bold" Margin="0,14,0,6"/>
 
-                <ListBox x:Name="BlocksList"
-                    ItemsSource="{Binding Blocks}"
-                    SelectionChanged="BlocksList_SelectionChanged"
-                    Height="140"/>
+                <TreeView x:Name="StructureTree"
+                    ItemsSource="{Binding StructureRoots}"
+                    SelectedItemChanged="StructureTree_SelectedItemChanged"
+                    Height="260">
+                    <TreeView.ItemTemplate>
+                        <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                            <TextBlock Text="{Binding Title}" />
+                        </HierarchicalDataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
 
                 <!-- Когда ничего не выбрано, блок будет пустым. Это норм. -->
             </StackPanel>

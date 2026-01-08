@@ -37,6 +37,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set { _selectedByteMeaning = value; OnPropertyChanged(); }
     }
 
+    private ObservableCollection<GifStructureNode> _structureRoots = new();
+    public ObservableCollection<GifStructureNode> StructureRoots
+    {
+        get => _structureRoots;
+        private set { _structureRoots = value; OnPropertyChanged(); }
+    }
+
     private GifFile? _currentFile;
     public GifFile? CurrentFile
     {
@@ -100,8 +107,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var bytes = _fileLoader.LoadAllBytes(dlg.FileName);
             CurrentFile = _parser.Parse(dlg.FileName, bytes);
 
-            var ranges = _structure.BuildRanges(CurrentFile);
-            Blocks = new ObservableCollection<GifByteRange>(ranges);
+            var tree = _structure.BuildStructureTree(CurrentFile);
+            Blocks = new ObservableCollection<GifByteRange>(_structure.BuildRanges(CurrentFile));
+            StructureRoots = new ObservableCollection<GifStructureNode>(tree);
+
 
             HexRows = _hexBuilder.Build(bytes);
         }
@@ -110,7 +119,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             CurrentFile = null;
             HexRows = new ObservableCollection<HexRow>();
             ErrorText = ex.Message;
-            Blocks = new ObservableCollection<GifByteRange>();
+            StructureRoots = new ObservableCollection<GifStructureNode>();
             SelectedByteMeaning = null;
         }
     }
