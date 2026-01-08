@@ -1,0 +1,23 @@
+﻿<Window x:Class="DecodingGif.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:DecodingGif.UI.ViewModels"
+        mc:Ignorable="d"
+        Title="DecodingGif" Height="200" Width="700">
+
+    <Window.DataContext>
+        <vm:MainViewModel />
+    </Window.DataContext>
+
+    <DockPanel Margin="12">
+        <Button DockPanel.Dock="Top"
+                Content="Open GIF"
+                Command="{Binding OpenFileCommand}"
+                Height="32"
+                Margin="0,0,0,10"/>
+
+        <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap"/>
+    </DockPanel>
+</Window>

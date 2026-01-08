@@ -1,0 +1,93 @@
+## =========================
+## Visual Studio / .NET
+## =========================
+
+# Build results
+bin/
+obj/
+
+# Rider / VS cache
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Debug / Release
+[Bb]uild/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+AnyCPU/
+
+# Test results
+TestResults/
+*.trx
+
+# Publish output
+publish/
+
+## =========================
+## .NET Core / SDK
+## =========================
+
+# Generated files
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# dotnet tools
+.dotnet/
+
+## =========================
+## Logs
+## =========================
+
+*.log
+
+## =========================
+## OS files
+## =========================
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+
+# Linux
+*~
+
+## =========================
+## NuGet
+## =========================
+
+# Packages (если не используешь packages.config)
+packages/
+*.nupkg
+*.snupkg
+
+# NuGet cache (не нужен в репо)
+.nuget/
+
+## =========================
+## Coverage / Analysis
+## =========================
+
+coverage/
+coverage.xml
+*.coverage
+*.coveragexml
+
+## =========================
+## Temporary files
+## =========================
+
+*.tmp
+*.temp
+*.bak
+*.old
