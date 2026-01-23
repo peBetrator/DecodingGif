@@ -107,38 +107,45 @@
             </DataGrid>
 
             <!-- RIGHT PANEL -->
-            <StackPanel Grid.Column="1" Margin="12,0,0,0">
-                <TextBlock Text="Info" FontWeight="Bold" Margin="0,0,0,6"/>
+            <ScrollViewer Grid.Column="1" Margin="12,0,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                    <TextBlock Text="Preview" FontWeight="Bold" Margin="0,0,0,6"/>
+                    <Border BorderBrush="LightGray" BorderThickness="1" Padding="4" Margin="0,0,0,12">
+                        <Image Source="{Binding PreviewImage}" Stretch="Uniform" Height="220"/>
+                    </Border>
 
-                <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                    <TextBlock Text="Info" FontWeight="Bold" Margin="0,0,0,6"/>
 
-                <TextBlock Text="Selected byte:" FontWeight="Bold" Margin="0,0,0,6"/>
+                    <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
 
-                <StackPanel DataContext="{Binding SelectedByte}">
-                    <TextBlock Text="{Binding OffsetHex, StringFormat=Offset (hex): {0}}" />
-                    <TextBlock Text="{Binding Offset, StringFormat=Offset (dec): {0}}" Margin="0,2,0,0"/>
-                    <TextBlock Text="{Binding ValueHex, StringFormat=Value (hex): {0}}" Margin="0,8,0,0"/>
-                    <TextBlock Text="{Binding ValueDec, StringFormat=Value (dec): {0}}" Margin="0,2,0,0"/>
-                    <TextBlock Text="{Binding Ascii, StringFormat=ASCII: {0}}" Margin="0,8,0,0"/>
+                    <TextBlock Text="Selected byte:" FontWeight="Bold" Margin="0,0,0,6"/>
+
+                    <StackPanel DataContext="{Binding SelectedByte}">
+                        <TextBlock Text="{Binding OffsetHex, StringFormat=Offset (hex): {0}}" />
+                        <TextBlock Text="{Binding Offset, StringFormat=Offset (dec): {0}}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding ValueHex, StringFormat=Value (hex): {0}}" Margin="0,8,0,0"/>
+                        <TextBlock Text="{Binding ValueDec, StringFormat=Value (dec): {0}}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding Ascii, StringFormat=ASCII: {0}}" Margin="0,8,0,0"/>
+                    </StackPanel>
+                    <TextBlock Text="Meaning:" FontWeight="Bold" Margin="0,14,0,6"/>
+                    <TextBlock Text="{Binding SelectedByteMeaning}" TextWrapping="Wrap"/>
+
+                    <TextBlock Text="Structure:" FontWeight="Bold" Margin="0,14,0,6"/>
+
+                    <TreeView x:Name="StructureTree"
+                        ItemsSource="{Binding StructureRoots}"
+                        SelectedItemChanged="StructureTree_SelectedItemChanged"
+                        Height="260">
+                        <TreeView.ItemTemplate>
+                            <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                <TextBlock Text="{Binding Title}" />
+                            </HierarchicalDataTemplate>
+                        </TreeView.ItemTemplate>
+                    </TreeView>
+
+                    <!-- Когда ничего не выбрано, блок будет пустым. Это норм. -->
                 </StackPanel>
-                <TextBlock Text="Meaning:" FontWeight="Bold" Margin="0,14,0,6"/>
-                <TextBlock Text="{Binding SelectedByteMeaning}" TextWrapping="Wrap"/>
-
-                <TextBlock Text="Structure:" FontWeight="Bold" Margin="0,14,0,6"/>
-
-                <TreeView x:Name="StructureTree"
-                    ItemsSource="{Binding StructureRoots}"
-                    SelectedItemChanged="StructureTree_SelectedItemChanged"
-                    Height="260">
-                    <TreeView.ItemTemplate>
-                        <HierarchicalDataTemplate ItemsSource="{Binding Children}">
-                            <TextBlock Text="{Binding Title}" />
-                        </HierarchicalDataTemplate>
-                    </TreeView.ItemTemplate>
-                </TreeView>
-
-                <!-- Когда ничего не выбрано, блок будет пустым. Это норм. -->
-            </StackPanel>
+            </ScrollViewer>
         </Grid>
     </DockPanel>
 </Window>

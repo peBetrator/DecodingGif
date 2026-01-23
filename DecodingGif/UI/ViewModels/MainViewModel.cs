@@ -1,9 +1,11 @@
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using System.Windows.Media.Imaging;
 using DecodingGif.Core.Editing;
 using DecodingGif.Core.Models;
 using DecodingGif.Core.Parsing;
@@ -112,6 +114,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set { _selectedLctRange = value; OnPropertyChanged(); }
     }
 
+    private BitmapSource? _previewImage;
+    public BitmapSource? PreviewImage
+    {
+        get => _previewImage;
+        private set { _previewImage = value; OnPropertyChanged(); }
+    }
+
     public ICommand OpenFileCommand { get; }
 
     public MainViewModel()
@@ -148,6 +157,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             SelectedLctRange = null;
 
             HexRows = _hexBuilder.Build(bytes, _editPolicy);
+            UpdatePreview();
         }
         catch (Exception ex)
         {
@@ -158,6 +168,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             SelectedByteMeaning = null;
             GctRange = null;
             SelectedLctRange = null;
+            PreviewImage = null;
         }
     }
 
@@ -194,6 +205,35 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public void SetSelectedLctRange(GifByteRange? range)
     {
         SelectedLctRange = range?.Kind == GifBlockKind.LocalColorTable ? range : null;
+    }
+
+    public void UpdatePreview()
+    {
+        var file = CurrentFile;
+        if (file is null)
+        {
+            PreviewImage = null;
+            return;
+        }
+
+        try
+        {
+            using var ms = new MemoryStream(file.Bytes, writable: false);
+            var decoder = new GifBitmapDecoder(ms, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            var frame = decoder.Frames.Count > 0 ? decoder.Frames[0] : null;
+            if (frame is null)
+            {
+                PreviewImage = null;
+                return;
+            }
+
+            frame.Freeze();
+            PreviewImage = frame;
+        }
+        catch
+        {
+            PreviewImage = null;
+        }
     }
 
     private sealed class VmByteEditPolicy : IByteEditPolicy
@@ -236,6 +276,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 return;
 
             file.Bytes[offset] = value;
+            _vm.UpdatePreview();
         }
     }
 
