@@ -1,11 +1,14 @@
-﻿using System.ComponentModel;
+using System;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Windows.Input;
+using DecodingGif.Core.Editing;
 using DecodingGif.Core.Models;
 using DecodingGif.Core.Parsing;
 using DecodingGif.Core.Services;
 using Microsoft.Win32;
-using System.Windows.Input;
-using System.Collections.ObjectModel;
 
 namespace DecodingGif.UI.ViewModels;
 
@@ -15,6 +18,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly GifParser _parser = new();
     private readonly HexRowsBuilder _hexBuilder = new();
     private readonly GifStructureService _structure = new();
+    private readonly IByteEditPolicy _editPolicy;
 
     private ObservableCollection<HexRow> _hexRows = new();
     public ObservableCollection<HexRow> HexRows
@@ -80,11 +84,40 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private bool _isSafeMode = true;
+    public bool IsSafeMode
+    {
+        get => _isSafeMode;
+        set { _isSafeMode = value; OnPropertyChanged(); }
+    }
+
+    private bool _allowSelectedLctEdit;
+    public bool AllowSelectedLctEdit
+    {
+        get => _allowSelectedLctEdit;
+        set { _allowSelectedLctEdit = value; OnPropertyChanged(); }
+    }
+
+    private GifByteRange? _gctRange;
+    public GifByteRange? GctRange
+    {
+        get => _gctRange;
+        private set { _gctRange = value; OnPropertyChanged(); }
+    }
+
+    private GifByteRange? _selectedLctRange;
+    public GifByteRange? SelectedLctRange
+    {
+        get => _selectedLctRange;
+        private set { _selectedLctRange = value; OnPropertyChanged(); }
+    }
+
     public ICommand OpenFileCommand { get; }
 
     public MainViewModel()
     {
         OpenFileCommand = new RelayCommand(OpenFile);
+        _editPolicy = new VmByteEditPolicy(this);
     }
 
     private void OpenFile()
@@ -108,11 +141,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
             CurrentFile = _parser.Parse(dlg.FileName, bytes);
 
             var tree = _structure.BuildStructureTree(CurrentFile);
-            Blocks = new ObservableCollection<GifByteRange>(_structure.BuildRanges(CurrentFile));
+            var ranges = _structure.BuildRanges(CurrentFile).ToList();
+            Blocks = new ObservableCollection<GifByteRange>(ranges);
             StructureRoots = new ObservableCollection<GifStructureNode>(tree);
+            GctRange = ranges.FirstOrDefault(r => r.Kind == GifBlockKind.GlobalColorTable);
+            SelectedLctRange = null;
 
-
-            HexRows = _hexBuilder.Build(bytes);
+            HexRows = _hexBuilder.Build(bytes, _editPolicy);
         }
         catch (Exception ex)
         {
@@ -121,6 +156,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ErrorText = ex.Message;
             StructureRoots = new ObservableCollection<GifStructureNode>();
             SelectedByteMeaning = null;
+            GctRange = null;
+            SelectedLctRange = null;
         }
     }
 
@@ -152,6 +189,54 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Ascii: ascii
         );
         SelectedByteMeaning = _structure.DescribeOffset(CurrentFile, offset);
+    }
+
+    public void SetSelectedLctRange(GifByteRange? range)
+    {
+        SelectedLctRange = range?.Kind == GifBlockKind.LocalColorTable ? range : null;
+    }
+
+    private sealed class VmByteEditPolicy : IByteEditPolicy
+    {
+        private readonly MainViewModel _vm;
+
+        public VmByteEditPolicy(MainViewModel vm)
+        {
+            _vm = vm;
+        }
+
+        public bool CanEdit(int offset)
+        {
+            var file = _vm.CurrentFile;
+            if (file is null)
+                return false;
+
+            if (offset < 0 || offset >= file.Bytes.Length)
+                return false;
+
+            if (!_vm.IsSafeMode)
+                return true;
+
+            if (_vm.GctRange is not null && _vm.GctRange.Contains(offset))
+                return true;
+
+            if (_vm.AllowSelectedLctEdit && _vm.SelectedLctRange is not null && _vm.SelectedLctRange.Contains(offset))
+                return true;
+
+            return false;
+        }
+
+        public void SetByte(int offset, byte value)
+        {
+            var file = _vm.CurrentFile;
+            if (file is null)
+                return;
+
+            if (offset < 0 || offset >= file.Bytes.Length)
+                return;
+
+            file.Bytes[offset] = value;
+        }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

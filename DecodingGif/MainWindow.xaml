@@ -10,6 +10,27 @@
 
     <Window.Resources>
         <conv:HexCellBackgroundConverter x:Key="HexCellBackgroundConverter"/>
+        <conv:HexCellIsReadOnlyConverter x:Key="HexCellIsReadOnlyConverter"/>
+        <Style x:Key="HexCellEditingStyle" TargetType="TextBox">
+            <Setter Property="IsReadOnly">
+                <Setter.Value>
+                    <MultiBinding Converter="{StaticResource HexCellIsReadOnlyConverter}">
+                        <!-- 0: row offset -->
+                        <Binding Path="Offset"/>
+                        <!-- 1: column header -->
+                        <Binding RelativeSource="{RelativeSource AncestorType=DataGridCell}" Path="Column.Header"/>
+                        <!-- 2: safe mode -->
+                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.IsSafeMode"/>
+                        <!-- 3: GCT range -->
+                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.GctRange"/>
+                        <!-- 4: allow selected LCT -->
+                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.AllowSelectedLctEdit"/>
+                        <!-- 5: selected LCT range -->
+                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.SelectedLctRange"/>
+                    </MultiBinding>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Window.DataContext>
@@ -19,6 +40,8 @@
     <DockPanel Margin="12">
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
             <Button Content="Open GIF" Command="{Binding OpenFileCommand}" Height="32" Width="120"/>
+            <CheckBox Content="Safe Mode" IsChecked="{Binding IsSafeMode}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+            <CheckBox Content="Allow editing selected LCT" IsChecked="{Binding AllowSelectedLctEdit}" Margin="12,0,0,0" VerticalAlignment="Center"/>
             <TextBlock Text="{Binding StatusText}" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
         </StackPanel>
 
@@ -32,7 +55,7 @@
             <DataGrid x:Name="HexGrid"
                 Grid.Column="0"
                 ItemsSource="{Binding HexRows}"
-                IsReadOnly="True"
+                IsReadOnly="False"
                 AutoGenerateColumns="False"
                 CanUserAddRows="False"
                 HeadersVisibility="Column"
@@ -60,26 +83,26 @@
                 </DataGrid.CellStyle>
 
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="Offset" Binding="{Binding OffsetHex}" Width="80"/>
+                    <DataGridTextColumn Header="Offset" Binding="{Binding OffsetHex}" Width="80" IsReadOnly="True"/>
 
-                    <DataGridTextColumn Header="00" Binding="{Binding B00}" Width="40"/>
-                    <DataGridTextColumn Header="01" Binding="{Binding B01}" Width="40"/>
-                    <DataGridTextColumn Header="02" Binding="{Binding B02}" Width="40"/>
-                    <DataGridTextColumn Header="03" Binding="{Binding B03}" Width="40"/>
-                    <DataGridTextColumn Header="04" Binding="{Binding B04}" Width="40"/>
-                    <DataGridTextColumn Header="05" Binding="{Binding B05}" Width="40"/>
-                    <DataGridTextColumn Header="06" Binding="{Binding B06}" Width="40"/>
-                    <DataGridTextColumn Header="07" Binding="{Binding B07}" Width="40"/>
-                    <DataGridTextColumn Header="08" Binding="{Binding B08}" Width="40"/>
-                    <DataGridTextColumn Header="09" Binding="{Binding B09}" Width="40"/>
-                    <DataGridTextColumn Header="0A" Binding="{Binding B10}" Width="40"/>
-                    <DataGridTextColumn Header="0B" Binding="{Binding B11}" Width="40"/>
-                    <DataGridTextColumn Header="0C" Binding="{Binding B12}" Width="40"/>
-                    <DataGridTextColumn Header="0D" Binding="{Binding B13}" Width="40"/>
-                    <DataGridTextColumn Header="0E" Binding="{Binding B14}" Width="40"/>
-                    <DataGridTextColumn Header="0F" Binding="{Binding B15}" Width="40"/>
+                    <DataGridTextColumn Header="00" Binding="{Binding B00}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="01" Binding="{Binding B01}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="02" Binding="{Binding B02}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="03" Binding="{Binding B03}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="04" Binding="{Binding B04}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="05" Binding="{Binding B05}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="06" Binding="{Binding B06}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="07" Binding="{Binding B07}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="08" Binding="{Binding B08}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="09" Binding="{Binding B09}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="0A" Binding="{Binding B10}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="0B" Binding="{Binding B11}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="0C" Binding="{Binding B12}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="0D" Binding="{Binding B13}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="0E" Binding="{Binding B14}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
+                    <DataGridTextColumn Header="0F" Binding="{Binding B15}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
 
-                    <DataGridTextColumn Header="ASCII" Binding="{Binding Ascii}" Width="*"/>
+                    <DataGridTextColumn Header="ASCII" Binding="{Binding Ascii}" Width="*" IsReadOnly="True"/>
                 </DataGrid.Columns>
             </DataGrid>
 

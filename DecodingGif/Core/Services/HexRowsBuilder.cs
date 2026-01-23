@@ -1,11 +1,12 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
+using DecodingGif.Core.Editing;
 using DecodingGif.Core.Models;
 
 namespace DecodingGif.Core.Services;
 
 public sealed class HexRowsBuilder
 {
-    public ObservableCollection<HexRow> Build(byte[] bytes, int bytesPerRow = 16)
+    public ObservableCollection<HexRow> Build(byte[] bytes, IByteEditPolicy policy, int bytesPerRow = 16)
     {
         var rows = new ObservableCollection<HexRow>();
 
@@ -14,10 +15,7 @@ public sealed class HexRowsBuilder
 
         for (int offset = 0; offset < bytes.Length; offset += bytesPerRow)
         {
-            int remaining = bytes.Length - offset;
-            int take = Math.Min(bytesPerRow, remaining);
-            var slice = new ReadOnlySpan<byte>(bytes, offset, take);
-            rows.Add(new HexRow(offset, slice));
+            rows.Add(new HexRow(offset, bytes, policy));
         }
 
         return rows;
