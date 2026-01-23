@@ -189,7 +189,7 @@ public sealed class GifStructureService
                 if (offset + 1 >= bytes.Length)
                 {
                     // обрыв
-                    var unk = new GifStructureNode("Extension (truncated)", new GifByteRange(GifBlockKind.Unknown, "Extension", offset, bytes.Length - offset));
+                    var unk = new GifStructureNode("Extension (truncated)", new GifByteRange(GifBlockKind.Unknown, "Extension", offset, bytes.Length - offset), currentFrameNode?.FrameIndex);
                     // закинем либо в frame, либо в корень
                     (currentFrameNode ?? framesRoot).Children.Add(unk);
                     break;
@@ -208,7 +208,7 @@ public sealed class GifStructureService
                 if (label == 0xFF) // AppExt
                 {
                     int len = ReadApplicationExtensionLength(bytes, offset);
-                    var node = new GifStructureNode("Application Extension (AppExt)", new GifByteRange(GifBlockKind.ApplicationExtension, "AppExt", offset, len));
+                    var node = new GifStructureNode("Application Extension (AppExt)", new GifByteRange(GifBlockKind.ApplicationExtension, "AppExt", offset, len), currentFrameNode?.FrameIndex);
                     // обычно это глобальная штука, но может встретиться и внутри потока
                     framesRoot.Children.Add(node);
                     offset += len;
@@ -218,7 +218,8 @@ public sealed class GifStructureService
                 // прочие расширения (пока как Unknown, но структурно показываем)
                 int genericLen = ReadGenericExtensionLength(bytes, offset);
                 var extNode = new GifStructureNode($"Extension (0x21 0x{label:X2})",
-                    new GifByteRange(GifBlockKind.Unknown, $"Ext 0x{label:X2}", offset, genericLen));
+                    new GifByteRange(GifBlockKind.Unknown, $"Ext 0x{label:X2}", offset, genericLen),
+                    currentFrameNode?.FrameIndex);
 
                 // чаще всего расширения логически относятся к потоку кадров
                 (currentFrameNode ?? framesRoot).Children.Add(extNode);
@@ -232,25 +233,26 @@ public sealed class GifStructureService
                 if (offset + 10 > bytes.Length)
                 {
                     var trunc = new GifStructureNode("Image Descriptor (truncated)",
-                        new GifByteRange(GifBlockKind.ImageDescriptor, "Image Descriptor (truncated)", offset, bytes.Length - offset));
+                        new GifByteRange(GifBlockKind.ImageDescriptor, "Image Descriptor (truncated)", offset, bytes.Length - offset),
+                        currentFrameNode?.FrameIndex);
                     (currentFrameNode ?? framesRoot).Children.Add(trunc);
                     break;
                 }
 
                 frameIndex++;
-                currentFrameNode = new GifStructureNode($"Frame {frameIndex}");
+                currentFrameNode = new GifStructureNode($"Frame {frameIndex}", null, frameIndex);
                 framesRoot.Children.Add(currentFrameNode);
 
                 // Если перед кадром был GCE — прикрепляем к кадру
                 if (pendingGce is not null)
                 {
-                    currentFrameNode.Children.Add(new GifStructureNode("Graphic Control Extension (GCE)", pendingGce));
+                    currentFrameNode.Children.Add(new GifStructureNode("Graphic Control Extension (GCE)", pendingGce, frameIndex));
                     pendingGce = null;
                 }
 
                 // Image Descriptor
                 var idRange = new GifByteRange(GifBlockKind.ImageDescriptor, "Image Descriptor", offset, 10);
-                currentFrameNode.Children.Add(new GifStructureNode("Image Descriptor", idRange));
+                currentFrameNode.Children.Add(new GifStructureNode("Image Descriptor", idRange, frameIndex));
 
                 byte packed = bytes[offset + 9];
                 bool lctFlag = (packed & 0b1000_0000) != 0;
@@ -265,7 +267,7 @@ public sealed class GifStructureService
 
                     int safeLen = Math.Min(lctLen, Math.Max(0, bytes.Length - offset));
                     var lctRange = new GifByteRange(GifBlockKind.LocalColorTable, $"LCT x{lctSize}", offset, safeLen);
-                    currentFrameNode.Children.Add(new GifStructureNode($"Local Color Table (LCT) x{lctSize}", lctRange));
+                    currentFrameNode.Children.Add(new GifStructureNode($"Local Color Table (LCT) x{lctSize}", lctRange, frameIndex));
 
                     if (offset + lctLen > bytes.Length)
                         break;
@@ -276,7 +278,7 @@ public sealed class GifStructureService
                 // Image Data
                 int imgLen = ReadImageDataLength(bytes, offset);
                 var imgRange = new GifByteRange(GifBlockKind.ImageData, "Image Data", offset, Math.Min(imgLen, Math.Max(0, bytes.Length - offset)));
-                currentFrameNode.Children.Add(new GifStructureNode("Image Data (LZW sub-blocks)", imgRange));
+                currentFrameNode.Children.Add(new GifStructureNode("Image Data (LZW sub-blocks)", imgRange, frameIndex));
 
                 offset += imgLen;
                 continue;
@@ -284,7 +286,8 @@ public sealed class GifStructureService
 
             // если встречаем мусор, не зацикливаемся
             var unknown = new GifStructureNode($"Unknown byte 0x{b:X2}",
-                new GifByteRange(GifBlockKind.Unknown, $"Unknown 0x{b:X2}", offset, 1));
+                new GifByteRange(GifBlockKind.Unknown, $"Unknown 0x{b:X2}", offset, 1),
+                currentFrameNode?.FrameIndex);
 
             (currentFrameNode ?? framesRoot).Children.Add(unknown);
             offset += 1;

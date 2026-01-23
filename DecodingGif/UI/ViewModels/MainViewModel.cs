@@ -114,6 +114,37 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set { _selectedLctRange = value; OnPropertyChanged(); }
     }
 
+    private int _selectedFrameIndex;
+    public int SelectedFrameIndex
+    {
+        get => _selectedFrameIndex;
+        private set
+        {
+            if (_selectedFrameIndex == value)
+                return;
+            _selectedFrameIndex = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(FrameLabel));
+            UpdatePreview();
+        }
+    }
+
+    private int _frameCount;
+    public int FrameCount
+    {
+        get => _frameCount;
+        private set
+        {
+            if (_frameCount == value)
+                return;
+            _frameCount = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(FrameLabel));
+        }
+    }
+
+    public string FrameLabel => FrameCount > 0 ? $"Frame {SelectedFrameIndex + 1}/{FrameCount}" : "Frame -";
+
     private BitmapSource? _previewImage;
     public BitmapSource? PreviewImage
     {
@@ -122,10 +153,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     public ICommand OpenFileCommand { get; }
+    public ICommand PrevFrameCommand { get; }
+    public ICommand NextFrameCommand { get; }
 
     public MainViewModel()
     {
         OpenFileCommand = new RelayCommand(OpenFile);
+        PrevFrameCommand = new RelayCommand(SelectPrevFrame);
+        NextFrameCommand = new RelayCommand(SelectNextFrame);
         _editPolicy = new VmByteEditPolicy(this);
     }
 
@@ -155,6 +190,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             StructureRoots = new ObservableCollection<GifStructureNode>(tree);
             GctRange = ranges.FirstOrDefault(r => r.Kind == GifBlockKind.GlobalColorTable);
             SelectedLctRange = null;
+            _selectedFrameIndex = 0;
+            OnPropertyChanged(nameof(SelectedFrameIndex));
+            OnPropertyChanged(nameof(FrameLabel));
 
             HexRows = _hexBuilder.Build(bytes, _editPolicy);
             UpdatePreview();
@@ -169,6 +207,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             GctRange = null;
             SelectedLctRange = null;
             PreviewImage = null;
+            FrameCount = 0;
+            _selectedFrameIndex = 0;
+            OnPropertyChanged(nameof(SelectedFrameIndex));
+            OnPropertyChanged(nameof(FrameLabel));
         }
     }
 
@@ -207,12 +249,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SelectedLctRange = range?.Kind == GifBlockKind.LocalColorTable ? range : null;
     }
 
+    public void SetSelectedFrameIndex(int index)
+    {
+        if (FrameCount > 0)
+            index = Math.Clamp(index, 0, FrameCount - 1);
+
+        SelectedFrameIndex = index;
+    }
+
+    private void SelectPrevFrame() => SetSelectedFrameIndex(SelectedFrameIndex - 1);
+    private void SelectNextFrame() => SetSelectedFrameIndex(SelectedFrameIndex + 1);
+
     public void UpdatePreview()
     {
         var file = CurrentFile;
         if (file is null)
         {
             PreviewImage = null;
+            FrameCount = 0;
             return;
         }
 
@@ -220,7 +274,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             using var ms = new MemoryStream(file.Bytes, writable: false);
             var decoder = new GifBitmapDecoder(ms, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-            var frame = decoder.Frames.Count > 0 ? decoder.Frames[0] : null;
+            int count = decoder.Frames.Count;
+            FrameCount = count;
+            if (count == 0)
+            {
+                PreviewImage = null;
+                return;
+            }
+
+            int index = SelectedFrameIndex;
+            if (index < 0 || index >= count)
+                index = 0;
+
+            if (_selectedFrameIndex != index)
+            {
+                _selectedFrameIndex = index;
+                OnPropertyChanged(nameof(SelectedFrameIndex));
+                OnPropertyChanged(nameof(FrameLabel));
+            }
+
+            var frame = decoder.Frames[index];
             if (frame is null)
             {
                 PreviewImage = null;
@@ -233,6 +306,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         catch
         {
             PreviewImage = null;
+            FrameCount = 0;
         }
     }
 

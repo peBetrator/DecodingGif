@@ -21,6 +21,9 @@ public partial class MainWindow
         if (e.NewValue is not GifStructureNode node)
             return;
 
+        if (node.FrameIndex.HasValue)
+            vm.SetSelectedFrameIndex(node.FrameIndex.Value);
+
         if (node.Range?.Kind == GifBlockKind.LocalColorTable)
             vm.SetSelectedLctRange(node.Range);
         else
