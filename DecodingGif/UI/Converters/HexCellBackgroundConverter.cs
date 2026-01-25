@@ -1,6 +1,6 @@
 ﻿using System.Globalization;
 using System.Windows.Data;
-using System.Windows.Media;
+using MediaBrushes = System.Windows.Media.Brushes;
 using DecodingGif.Core.Models;
 
 namespace DecodingGif.UI.Converters;
@@ -16,19 +16,19 @@ public sealed class HexCellBackgroundConverter : IMultiValueConverter
         // 3: SelectedByte.Offset (int?) optional
 
         if (values.Length < 3)
-            return Brushes.Transparent;
+            return MediaBrushes.Transparent;
 
         if (values[0] is not int rowOffset)
-            return Brushes.Transparent;
+            return MediaBrushes.Transparent;
 
         if (values[1] is not string header || header.Length != 2)
-            return Brushes.Transparent;
+            return MediaBrushes.Transparent;
 
         if (!int.TryParse(header, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int index))
-            return Brushes.Transparent;
+            return MediaBrushes.Transparent;
 
         if (index is < 0 or > 15)
-            return Brushes.Transparent;
+            return MediaBrushes.Transparent;
 
         int absoluteOffset = rowOffset + index;
 
@@ -38,31 +38,31 @@ public sealed class HexCellBackgroundConverter : IMultiValueConverter
             selectedOffset = so;
 
         if (selectedOffset.HasValue && absoluteOffset == selectedOffset.Value)
-            return Brushes.Gold; // выбранный байт поверх всего
+            return MediaBrushes.Gold; // выбранный байт поверх всего
 
         if (values[2] is not IEnumerable<GifByteRange> blocks)
-            return Brushes.Transparent;
+            return MediaBrushes.Transparent;
 
         var block = blocks.FirstOrDefault(b => b.Contains(absoluteOffset));
         if (block is null)
-            return Brushes.Transparent;
+            return MediaBrushes.Transparent;
 
         return block.Kind switch
         {
-            GifBlockKind.Header => Brushes.LightSkyBlue,
-            GifBlockKind.LogicalScreenDescriptor => Brushes.LightGreen,
-            GifBlockKind.GlobalColorTable => Brushes.LightPink,
+            GifBlockKind.Header => MediaBrushes.LightSkyBlue,
+            GifBlockKind.LogicalScreenDescriptor => MediaBrushes.LightGreen,
+            GifBlockKind.GlobalColorTable => MediaBrushes.LightPink,
 
-            GifBlockKind.GraphicControlExtension => Brushes.Plum,
-            GifBlockKind.ApplicationExtension => Brushes.Khaki,
+            GifBlockKind.GraphicControlExtension => MediaBrushes.Plum,
+            GifBlockKind.ApplicationExtension => MediaBrushes.Khaki,
 
-            GifBlockKind.ImageDescriptor => Brushes.LightSteelBlue,
-            GifBlockKind.LocalColorTable => Brushes.LightSalmon,
-            GifBlockKind.ImageData => Brushes.LightGray,
+            GifBlockKind.ImageDescriptor => MediaBrushes.LightSteelBlue,
+            GifBlockKind.LocalColorTable => MediaBrushes.LightSalmon,
+            GifBlockKind.ImageData => MediaBrushes.LightGray,
 
-            GifBlockKind.Trailer => Brushes.LightCyan,
+            GifBlockKind.Trailer => MediaBrushes.LightCyan,
 
-            _ => Brushes.Transparent
+            _ => MediaBrushes.Transparent
         };
     }
 

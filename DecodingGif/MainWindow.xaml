@@ -11,6 +11,7 @@
     <Window.Resources>
         <conv:HexCellBackgroundConverter x:Key="HexCellBackgroundConverter"/>
         <conv:HexCellIsReadOnlyConverter x:Key="HexCellIsReadOnlyConverter"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <Style x:Key="HexCellEditingStyle" TargetType="TextBox">
             <Setter Property="IsReadOnly">
                 <Setter.Value>
@@ -123,19 +124,60 @@
 
                     <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
 
-                    <TextBlock Text="Selected byte:" FontWeight="Bold" Margin="0,0,0,6"/>
+                <TextBlock Text="Selected byte:" FontWeight="Bold" Margin="0,0,0,6"/>
 
-                    <StackPanel DataContext="{Binding SelectedByte}">
-                        <TextBlock Text="{Binding OffsetHex, StringFormat=Offset (hex): {0}}" />
-                        <TextBlock Text="{Binding Offset, StringFormat=Offset (dec): {0}}" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding ValueHex, StringFormat=Value (hex): {0}}" Margin="0,8,0,0"/>
-                        <TextBlock Text="{Binding ValueDec, StringFormat=Value (dec): {0}}" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding Ascii, StringFormat=ASCII: {0}}" Margin="0,8,0,0"/>
+                <StackPanel DataContext="{Binding SelectedByte}">
+                    <TextBlock Text="{Binding OffsetHex, StringFormat=Offset (hex): {0}}" />
+                    <TextBlock Text="{Binding Offset, StringFormat=Offset (dec): {0}}" Margin="0,2,0,0"/>
+                    <TextBlock Text="{Binding ValueHex, StringFormat=Value (hex): {0}}" Margin="0,8,0,0"/>
+                    <TextBlock Text="{Binding ValueDec, StringFormat=Value (dec): {0}}" Margin="0,2,0,0"/>
+                    <TextBlock Text="{Binding Ascii, StringFormat=ASCII: {0}}" Margin="0,8,0,0"/>
+                </StackPanel>
+
+                <StackPanel Visibility="{Binding HasSelectedColorInfo, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="Color:" FontWeight="Bold" Margin="0,14,0,6"/>
+                    <StackPanel>
+                        <TextBlock Text="{Binding SelectedColorTableLabel}" />
+                        <TextBlock Text="{Binding SelectedColorIndex, StringFormat=Color index: {0}}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding SelectedColorChannel}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding SelectedColorRgbText}" Margin="0,2,0,0"/>
+                        <Border Width="48" Height="20" BorderBrush="Gray" BorderThickness="1" Background="{Binding SelectedColorBrush}" Margin="0,6,0,0"/>
+                        <Button Content="Pick color" Command="{Binding PickColorCommand}" IsEnabled="{Binding SelectedColorCanEdit}" Width="100" Margin="0,6,0,0"/>
                     </StackPanel>
+                </StackPanel>
+
+                <StackPanel Visibility="{Binding HasSelectedByteMeaning, Converter={StaticResource BoolToVisibilityConverter}}">
                     <TextBlock Text="Meaning:" FontWeight="Bold" Margin="0,14,0,6"/>
                     <TextBlock Text="{Binding SelectedByteMeaning}" TextWrapping="Wrap"/>
+                </StackPanel>
 
-                    <TextBlock Text="Structure:" FontWeight="Bold" Margin="0,14,0,6"/>
+                <StackPanel Visibility="{Binding HasSelectedGceInfo, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="GCE:" FontWeight="Bold" Margin="0,14,0,6"/>
+                    <StackPanel>
+                        <TextBlock Text="{Binding SelectedGceLabel}" />
+                        <TextBlock Text="{Binding SelectedGceDelayText}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding SelectedGceDisposalText}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding SelectedGceTransparencyText}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Visibility="{Binding HasSelectedLsdInfo, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="LSD:" FontWeight="Bold" Margin="0,14,0,6"/>
+                    <StackPanel>
+                        <TextBlock Text="{Binding SelectedLsdLabel}" />
+                        <TextBlock Text="{Binding SelectedLsdDimensions}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding SelectedLsdGctPresent}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding SelectedLsdGctSize}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding SelectedLsdColorResolution}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding SelectedLsdSortFlag}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding SelectedLsdBackgroundIndex}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding SelectedLsdPixelAspect}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding SelectedLsdBackgroundRgb}" Margin="0,2,0,0"/>
+                        <Border Width="48" Height="20" BorderBrush="Gray" BorderThickness="1" Background="{Binding SelectedLsdBackgroundBrush}" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <TextBlock Text="Structure:" FontWeight="Bold" Margin="0,14,0,6"/>
 
                     <TreeView x:Name="StructureTree"
                         ItemsSource="{Binding StructureRoots}"
