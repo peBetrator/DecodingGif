@@ -5,11 +5,14 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:DecodingGif.UI.ViewModels"
         xmlns:conv="clr-namespace:DecodingGif.UI.Converters"
+        xmlns:ctrl="clr-namespace:DecodingGif.UI.Controls"
         mc:Ignorable="d"
         Title="DecodingGif" Height="700" Width="1400">
 
     <Window.Resources>
         <conv:HexCellBackgroundConverter x:Key="HexCellBackgroundConverter"/>
+        <conv:HexCellBorderConverter x:Key="HexCellBorderConverter"/>
+        <conv:HexCellTooltipConverter x:Key="HexCellTooltipConverter"/>
         <conv:HexCellIsReadOnlyConverter x:Key="HexCellIsReadOnlyConverter"/>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <Style x:Key="HexCellEditingStyle" TargetType="TextBox">
@@ -52,39 +55,82 @@
                 <ColumnDefinition Width="2*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- HEX VIEW -->
-            <DataGrid x:Name="HexGrid"
-                Grid.Column="0"
-                ItemsSource="{Binding HexRows}"
-                IsReadOnly="False"
-                AutoGenerateColumns="False"
-                CanUserAddRows="False"
-                HeadersVisibility="Column"
-                SelectionMode="Single"
-                SelectionUnit="Cell"
-                SelectedCellsChanged="HexGrid_SelectedCellsChanged">
+            <Grid Grid.Column="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="30"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
 
-                <DataGrid.CellStyle>
-                    <Style TargetType="DataGridCell">
-                        <Setter Property="Background">
-                            <Setter.Value>
-                                <MultiBinding Converter="{StaticResource HexCellBackgroundConverter}">
-                                    <!-- 0: row offset -->
-                                    <Binding Path="Offset"/>
-                                    <!-- 1: column header -->
-                                    <Binding RelativeSource="{RelativeSource Self}" Path="Column.Header"/>
-                                    <!-- 2: blocks list -->
-                                    <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.Blocks"/>
-                                    <!-- 3: selected byte offset (optional) -->
-                                    <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.SelectedByte.Offset"/>
-                                </MultiBinding>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </DataGrid.CellStyle>
+                <ctrl:FileOverviewControl x:Name="FileOverview"
+                                          Grid.Column="0"
+                                          Margin="0,0,6,0"
+                                          Blocks="{Binding Blocks}"
+                                          FileLength="{Binding FileLength}"
+                                          SelectedOffset="{Binding SelectedByteOffset}"
+                                          HoveredOffset="{Binding HoveredByteOffset}"
+                                          ToolTip="File overview: click to jump"/>
 
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="Offset" Binding="{Binding OffsetHex}" Width="80" IsReadOnly="True"/>
+                <!-- HEX VIEW -->
+                <DataGrid x:Name="HexGrid"
+                    Grid.Column="1"
+                    ItemsSource="{Binding HexRows}"
+                    IsReadOnly="False"
+                    AutoGenerateColumns="False"
+                    CanUserAddRows="False"
+                    EnableRowVirtualization="True"
+                    EnableColumnVirtualization="True"
+                    VirtualizingPanel.IsVirtualizing="True"
+                    VirtualizingPanel.VirtualizationMode="Recycling"
+                    ScrollViewer.CanContentScroll="True"
+                    HeadersVisibility="Column"
+                    SelectionMode="Single"
+                    SelectionUnit="Cell"
+                    MouseMove="HexGrid_MouseMove"
+                    MouseLeave="HexGrid_MouseLeave"
+                    SelectedCellsChanged="HexGrid_SelectedCellsChanged">
+
+                    <DataGrid.CellStyle>
+                        <Style TargetType="DataGridCell">
+                            <Setter Property="BorderBrush" Value="#334155"/>
+                            <Setter Property="Background">
+                                <Setter.Value>
+                                    <MultiBinding Converter="{StaticResource HexCellBackgroundConverter}">
+                                        <!-- 0: row offset -->
+                                        <Binding Path="Offset"/>
+                                        <!-- 1: column header -->
+                                        <Binding RelativeSource="{RelativeSource Self}" Path="Column.Header"/>
+                                        <!-- 2: blocks list -->
+                                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.Blocks"/>
+                                        <!-- 3: selected byte offset -->
+                                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.SelectedByteOffset"/>
+                                        <!-- 4: hovered byte offset -->
+                                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.HoveredByteOffset"/>
+                                    </MultiBinding>
+                                </Setter.Value>
+                            </Setter>
+                            <Setter Property="BorderThickness">
+                                <Setter.Value>
+                                    <MultiBinding Converter="{StaticResource HexCellBorderConverter}">
+                                        <Binding Path="Offset"/>
+                                        <Binding RelativeSource="{RelativeSource Self}" Path="Column.Header"/>
+                                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.Blocks"/>
+                                    </MultiBinding>
+                                </Setter.Value>
+                            </Setter>
+                            <Setter Property="ToolTip">
+                                <Setter.Value>
+                                    <MultiBinding Converter="{StaticResource HexCellTooltipConverter}">
+                                        <Binding Path="Offset"/>
+                                        <Binding RelativeSource="{RelativeSource Self}" Path="Column.Header"/>
+                                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.Blocks"/>
+                                    </MultiBinding>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </DataGrid.CellStyle>
+
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Offset" Binding="{Binding OffsetHex}" Width="80" IsReadOnly="True"/>
 
                     <DataGridTextColumn Header="00" Binding="{Binding B00}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
                     <DataGridTextColumn Header="01" Binding="{Binding B01}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
@@ -103,9 +149,10 @@
                     <DataGridTextColumn Header="0E" Binding="{Binding B14}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
                     <DataGridTextColumn Header="0F" Binding="{Binding B15}" Width="40" EditingElementStyle="{StaticResource HexCellEditingStyle}"/>
 
-                    <DataGridTextColumn Header="ASCII" Binding="{Binding Ascii}" Width="*" IsReadOnly="True"/>
-                </DataGrid.Columns>
-            </DataGrid>
+                        <DataGridTextColumn Header="ASCII" Binding="{Binding Ascii}" Width="*" IsReadOnly="True"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
 
             <!-- RIGHT PANEL -->
             <ScrollViewer Grid.Column="1" Margin="12,0,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">

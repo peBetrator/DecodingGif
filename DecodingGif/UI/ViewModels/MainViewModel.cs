@@ -47,7 +47,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ByteSelectionInfo? SelectedByte
     {
         get => _selectedByte;
-        private set { _selectedByte = value; OnPropertyChanged(); }
+        private set
+        {
+            _selectedByte = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SelectedByteOffset));
+        }
+    }
+
+    public int? SelectedByteOffset => SelectedByte?.Offset;
+
+    private int? _hoveredByteOffset;
+    public int? HoveredByteOffset
+    {
+        get => _hoveredByteOffset;
+        private set { _hoveredByteOffset = value; OnPropertyChanged(); }
     }
 
     private string? _selectedByteMeaning;
@@ -73,8 +87,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public GifFile? CurrentFile
     {
         get => _currentFile;
-        private set { _currentFile = value; OnPropertyChanged(); OnPropertyChanged(nameof(StatusText)); }
+        private set
+        {
+            _currentFile = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(StatusText));
+            OnPropertyChanged(nameof(FileLength));
+        }
     }
+
+    public int FileLength => CurrentFile?.Bytes.Length ?? 0;
 
     private ObservableCollection<GifByteRange> _blocks = new();
     public ObservableCollection<GifByteRange> Blocks
@@ -579,6 +601,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         PauseAnimation();
         ErrorText = null;
         SelectedByte = null;
+        HoveredByteOffset = null;
         SelectedByteMeaning = null;
         ClearSelectedColorInfo();
         ClearSelectedGceInfo();
@@ -619,6 +642,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             CurrentFile = null;
+            HoveredByteOffset = null;
             HexRows = new ObservableCollection<HexRow>();
             ErrorText = ex.Message;
             StructureRoots = new ObservableCollection<GifStructureNode>();
@@ -685,6 +709,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public void SetSelectedLctRange(GifByteRange? range)
     {
         SelectedLctRange = range?.Kind == GifBlockKind.LocalColorTable ? range : null;
+    }
+
+    public void SetHoveredByteOffset(int? offset)
+    {
+        if (offset.HasValue && (offset.Value < 0 || offset.Value >= FileLength))
+            offset = null;
+
+        if (HoveredByteOffset == offset)
+            return;
+
+        HoveredByteOffset = offset;
     }
 
     public void SetSelectedFrameIndex(int index)

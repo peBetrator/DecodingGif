@@ -1,16 +1,29 @@
-﻿using System.Globalization;
-using System.Windows.Controls;
-using DecodingGif.UI.ViewModels;
-using DecodingGif.Core.Models;
+using System.Globalization;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Threading;
+using DecodingGif.Core.Models;
+using DecodingGif.UI.ViewModels;
 
 namespace DecodingGif;
 
 public partial class MainWindow
 {
+    private readonly DispatcherTimer _hoverTimer;
+    private MainViewModel? _hoverVm;
+    private int? _pendingHoverOffset;
+    private DateTime _lastHoverInputUtc;
+
     public MainWindow()
     {
         InitializeComponent();
+        FileOverview.OffsetClicked += FileOverview_OffsetClicked;
+        _hoverTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(33)
+        };
+        _hoverTimer.Tick += HoverTimer_Tick;
     }
 
     private void StructureTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
@@ -30,15 +43,14 @@ public partial class MainWindow
             vm.SetSelectedLctRange(null);
 
         if (node.Range is null)
-            return; // например "Frames" или "Frame N"
+            return;
 
         int start = node.Range.Start;
+        vm.SetHoveredByteOffset(start);
 
         int rowIndex = start / 16;
         if (rowIndex >= 0 && rowIndex < vm.HexRows.Count)
-        {
             HexGrid.ScrollIntoView(vm.HexRows[rowIndex]);
-        }
 
         vm.SelectByte(start);
     }
@@ -52,29 +64,118 @@ public partial class MainWindow
             return;
 
         var cell = HexGrid.SelectedCells[0];
-
         if (cell.Item is not HexRow row)
             return;
 
-        if (cell.Column?.Header is not string header)
-            return;
-
-        // Нас интересуют только колонки байтов "00".."0F"
-        // Offset и ASCII игнорируем
-        if (header.Length != 2)
+        if (cell.Column?.Header is not string header || header.Length != 2)
             return;
 
         if (!int.TryParse(header, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int index))
             return;
 
-        if (index < 0 || index > 15)
+        if (index is < 0 or > 15)
             return;
 
-        // Если в этой позиции байта нет (конец файла) – ничего не выбираем
         if (!row.TryGetByte(index, out _))
             return;
 
         int absoluteOffset = row.Offset + index;
         vm.SelectByte(absoluteOffset);
+    }
+
+    private void HexGrid_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        if (TryGetOffsetUnderMouse(e.OriginalSource as DependencyObject, out int offset))
+            QueueHoverOffset(vm, offset);
+        else
+            QueueHoverOffset(vm, null);
+    }
+
+    private void HexGrid_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        QueueHoverOffset(vm, null);
+    }
+
+    private void FileOverview_OffsetClicked(object? sender, int offset)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        int rowIndex = offset / 16;
+        if (rowIndex >= 0 && rowIndex < vm.HexRows.Count)
+            HexGrid.ScrollIntoView(vm.HexRows[rowIndex]);
+
+        vm.SelectByte(offset);
+        QueueHoverOffset(vm, offset);
+    }
+
+    private void QueueHoverOffset(MainViewModel vm, int? offset)
+    {
+        _hoverVm = vm;
+        _pendingHoverOffset = offset;
+        _lastHoverInputUtc = DateTime.UtcNow;
+        if (!_hoverTimer.IsEnabled)
+            _hoverTimer.Start();
+    }
+
+    private void HoverTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_hoverVm is null)
+        {
+            _hoverTimer.Stop();
+            return;
+        }
+
+        _hoverVm.SetHoveredByteOffset(_pendingHoverOffset);
+        if ((DateTime.UtcNow - _lastHoverInputUtc).TotalMilliseconds > 120
+            && _hoverVm.HoveredByteOffset == _pendingHoverOffset)
+        {
+            _hoverTimer.Stop();
+        }
+    }
+
+    private static bool TryGetOffsetUnderMouse(DependencyObject? source, out int offset)
+    {
+        offset = -1;
+        if (source is null)
+            return false;
+
+        var cell = FindVisualParent<DataGridCell>(source);
+        if (cell?.DataContext is not HexRow row)
+            return false;
+
+        if (cell.Column?.Header is not string header || header.Length != 2)
+            return false;
+
+        if (!int.TryParse(header, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int index))
+            return false;
+
+        if (index is < 0 or > 15)
+            return false;
+
+        if (!row.TryGetByte(index, out _))
+            return false;
+
+        offset = row.Offset + index;
+        return true;
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject child) where T : DependencyObject
+    {
+        DependencyObject? parent = child;
+        while (parent is not null)
+        {
+            if (parent is T typed)
+                return typed;
+            parent = VisualTreeHelper.GetParent(parent);
+        }
+
+        return null;
     }
 }
