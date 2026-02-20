@@ -265,18 +265,49 @@
 
                 <TextBlock Text="Structure:" FontWeight="Bold" Margin="0,14,0,6"/>
 
-                    <TreeView x:Name="StructureTree"
-                        ItemsSource="{Binding StructureRoots}"
-                        SelectedItemChanged="StructureTree_SelectedItemChanged"
-                        Height="260">
-                        <TreeView.ItemTemplate>
-                            <HierarchicalDataTemplate ItemsSource="{Binding Children}">
-                                <TextBlock Text="{Binding Title}" />
-                            </HierarchicalDataTemplate>
-                        </TreeView.ItemTemplate>
-                    </TreeView>
+                <TabControl Height="380">
+                    <TabItem Header="Tree View">
+                        <TreeView x:Name="StructureTree"
+                                  ItemsSource="{Binding StructureRoots}"
+                                  SelectedItemChanged="StructureTree_SelectedItemChanged">
+                            <TreeView.ItemTemplate>
+                                <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                    <TextBlock Text="{Binding Title}" />
+                                </HierarchicalDataTemplate>
+                            </TreeView.ItemTemplate>
+                        </TreeView>
+                    </TabItem>
 
-                    <!-- Когда ничего не выбрано, блок будет пустым. Это норм. -->
+                    <TabItem x:Name="GraphTab" Header="Graph View" MouseDoubleClick="GraphTab_MouseDoubleClick">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Orientation="Vertical" Margin="4">
+                                <WrapPanel>
+                                    <Button Content="Reset Layout" Command="{Binding ResetGraphLayoutCommand}" Margin="0,0,8,4"/>
+                                    <ComboBox Width="130" Margin="0,0,8,4" SelectedItem="{Binding GraphLayoutMode}" ItemsSource="{Binding GraphLayoutModes}"/>
+                                    <CheckBox Content="Show Edge Labels" IsChecked="{Binding ShowEdgeLabels}" Margin="0,0,8,4"/>
+                                </WrapPanel>
+                                <WrapPanel>
+                                    <CheckBox Content="Sequential" IsChecked="{Binding ShowSequentialEdges}" Margin="0,0,8,4"/>
+                                    <CheckBox Content="Dependencies" IsChecked="{Binding ShowDependencyEdges}" Margin="0,0,8,4"/>
+                                    <CheckBox Content="Shared" IsChecked="{Binding ShowSharedResourceEdges}" Margin="0,0,8,4"/>
+                                    <CheckBox Content="Temporal" IsChecked="{Binding ShowTemporalEdges}" Margin="0,0,8,4"/>
+                                    <CheckBox Content="DataFlow" IsChecked="{Binding ShowDataFlowEdges}" Margin="0,0,8,4"/>
+                                </WrapPanel>
+                            </StackPanel>
+
+                            <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                                <ctrl:StructureGraphControl x:Name="StructureGraphControl"
+                                                            Graph="{Binding StructureGraph}"
+                                                            ShowEdgeLabels="{Binding ShowEdgeLabels}"/>
+                            </ScrollViewer>
+                        </Grid>
+                    </TabItem>
+                </TabControl>
                 </StackPanel>
             </ScrollViewer>
         </Grid>

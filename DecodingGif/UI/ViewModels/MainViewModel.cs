@@ -24,6 +24,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly HexRowsBuilder _hexBuilder = new();
     private readonly GifStructureService _structure = new();
     private readonly GifAnimationService _animation = new();
+    private readonly StructureDependencyGraphBuilder _graphBuilder = new();
     private readonly IByteEditPolicy _editPolicy;
     private readonly DispatcherTimer _playbackTimer;
 
@@ -35,6 +36,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly RelayCommand _stepBackwardRelayCommand;
     private readonly RelayCommand _stepForwardRelayCommand;
     private readonly RelayCommand _restartRelayCommand;
+    private readonly RelayCommand _resetGraphLayoutRelayCommand;
 
     private ObservableCollection<HexRow> _hexRows = new();
     public ObservableCollection<HexRow> HexRows
@@ -195,6 +197,108 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     public string FrameLabel => FrameCount > 0 ? $"Frame {SelectedFrameIndex + 1}/{FrameCount}" : "Frame -";
+
+    private StructureDependencyGraph _structureGraph = new();
+    public StructureDependencyGraph StructureGraph
+    {
+        get => _structureGraph;
+        private set { _structureGraph = value; OnPropertyChanged(); }
+    }
+
+    private StructureDependencyGraph _fullStructureGraph = new();
+
+    private GraphLayoutMode _graphLayoutMode = GraphLayoutMode.Hierarchical;
+    public GraphLayoutMode GraphLayoutMode
+    {
+        get => _graphLayoutMode;
+        set
+        {
+            if (_graphLayoutMode == value)
+                return;
+            _graphLayoutMode = value;
+            OnPropertyChanged();
+            RebuildGraph();
+        }
+    }
+
+    public Array GraphLayoutModes => Enum.GetValues(typeof(GraphLayoutMode));
+
+    private bool _showSequentialEdges = true;
+    public bool ShowSequentialEdges
+    {
+        get => _showSequentialEdges;
+        set
+        {
+            if (_showSequentialEdges == value)
+                return;
+            _showSequentialEdges = value;
+            OnPropertyChanged();
+            ApplyGraphFilters();
+        }
+    }
+
+    private bool _showDependencyEdges = true;
+    public bool ShowDependencyEdges
+    {
+        get => _showDependencyEdges;
+        set
+        {
+            if (_showDependencyEdges == value)
+                return;
+            _showDependencyEdges = value;
+            OnPropertyChanged();
+            ApplyGraphFilters();
+        }
+    }
+
+    private bool _showSharedResourceEdges = true;
+    public bool ShowSharedResourceEdges
+    {
+        get => _showSharedResourceEdges;
+        set
+        {
+            if (_showSharedResourceEdges == value)
+                return;
+            _showSharedResourceEdges = value;
+            OnPropertyChanged();
+            ApplyGraphFilters();
+        }
+    }
+
+    private bool _showTemporalEdges = true;
+    public bool ShowTemporalEdges
+    {
+        get => _showTemporalEdges;
+        set
+        {
+            if (_showTemporalEdges == value)
+                return;
+            _showTemporalEdges = value;
+            OnPropertyChanged();
+            ApplyGraphFilters();
+        }
+    }
+
+    private bool _showDataFlowEdges = true;
+    public bool ShowDataFlowEdges
+    {
+        get => _showDataFlowEdges;
+        set
+        {
+            if (_showDataFlowEdges == value)
+                return;
+            _showDataFlowEdges = value;
+            OnPropertyChanged();
+            ApplyGraphFilters();
+        }
+    }
+
+    private bool _showEdgeLabels = true;
+    public bool ShowEdgeLabels
+    {
+        get => _showEdgeLabels;
+        set { _showEdgeLabels = value; OnPropertyChanged(); }
+    }
 
     private ObservableCollection<GifFrameInfo> _frameTimeline = new();
     public ObservableCollection<GifFrameInfo> FrameTimeline
@@ -562,6 +666,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand StepBackwardCommand { get; }
     public ICommand StepForwardCommand { get; }
     public ICommand RestartCommand { get; }
+    public ICommand ResetGraphLayoutCommand { get; }
     public ICommand PickColorCommand { get; }
 
     public MainViewModel()
@@ -581,6 +686,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _stepBackwardRelayCommand = new RelayCommand(StepBackward, CanStepBackward);
         _stepForwardRelayCommand = new RelayCommand(StepForward, CanStepForward);
         _restartRelayCommand = new RelayCommand(RestartAnimation, CanRestart);
+        _resetGraphLayoutRelayCommand = new RelayCommand(ResetGraphLayout);
 
         PrevFrameCommand = _prevFrameRelayCommand;
         NextFrameCommand = _nextFrameRelayCommand;
@@ -590,6 +696,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         StepBackwardCommand = _stepBackwardRelayCommand;
         StepForwardCommand = _stepForwardRelayCommand;
         RestartCommand = _restartRelayCommand;
+        ResetGraphLayoutCommand = _resetGraphLayoutRelayCommand;
 
         PickColorCommand = new RelayCommand(PickColorForSelectedPalette);
         _editPolicy = new VmByteEditPolicy(this);
@@ -630,6 +737,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             FrameTimeline = _animation.BuildFrameTimeline(CurrentFile, ranges);
             IsInfiniteLoopInFile = _animation.IsInfiniteLoop(CurrentFile, ranges);
             IsLooping = IsInfiniteLoopInFile;
+            _fullStructureGraph = _graphBuilder.BuildGraph(CurrentFile, ranges, GraphLayoutMode);
+            ApplyGraphFilters();
             OnPropertyChanged(nameof(TotalAnimationText));
             _selectedFrameIndex = 0;
             OnPropertyChanged(nameof(SelectedFrameIndex));
@@ -653,6 +762,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             FrameTimeline = new ObservableCollection<GifFrameInfo>();
             IsInfiniteLoopInFile = true;
             IsLooping = true;
+            _fullStructureGraph = new StructureDependencyGraph();
+            StructureGraph = new StructureDependencyGraph();
             IsPlaying = false;
             _playbackTimer.Stop();
             FrameCount = 0;
@@ -726,6 +837,82 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         SelectedFrameIndex = index;
     }
+
+    public void NavigateToByteRange(GifByteRange range)
+    {
+        SetHoveredByteOffset(range.Start);
+        SelectByte(range.Start);
+    }
+
+    private void ResetGraphLayout()
+    {
+        RebuildGraph();
+    }
+
+    private void RebuildGraph()
+    {
+        var file = CurrentFile;
+        if (file is null || Blocks.Count == 0)
+        {
+            _fullStructureGraph = new StructureDependencyGraph();
+            StructureGraph = new StructureDependencyGraph();
+            return;
+        }
+
+        _fullStructureGraph = _graphBuilder.BuildGraph(file, Blocks, GraphLayoutMode);
+        ApplyGraphFilters();
+    }
+
+    private void ApplyGraphFilters()
+    {
+        var source = _fullStructureGraph;
+        if (source.Nodes.Count == 0)
+        {
+            StructureGraph = new StructureDependencyGraph { Layout = GraphLayoutMode };
+            return;
+        }
+
+        var filtered = new StructureDependencyGraph
+        {
+            Layout = source.Layout,
+            CanvasSize = source.CanvasSize
+        };
+
+        foreach (var node in source.Nodes)
+        {
+            filtered.Nodes.Add(new GraphNode
+            {
+                Id = node.Id,
+                Title = node.Title,
+                BlockType = node.BlockType,
+                ByteRange = node.ByteRange,
+                Position = node.Position,
+                Size = node.Size,
+                Category = node.Category,
+                Properties = new Dictionary<string, object>(node.Properties)
+            });
+        }
+
+        foreach (var edge in source.Edges)
+        {
+            if (!IsEdgeVisible(edge.Type))
+                continue;
+            filtered.Edges.Add(edge);
+        }
+
+        StructureGraph = filtered;
+    }
+
+    private bool IsEdgeVisible(EdgeType type) =>
+        type switch
+        {
+            EdgeType.Sequential => ShowSequentialEdges,
+            EdgeType.Dependency => ShowDependencyEdges,
+            EdgeType.SharedResource => ShowSharedResourceEdges,
+            EdgeType.Temporal => ShowTemporalEdges,
+            EdgeType.DataFlow => ShowDataFlowEdges,
+            _ => true
+        };
 
     private void SelectPrevFrame()
     {

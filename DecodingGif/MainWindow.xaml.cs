@@ -14,11 +14,13 @@ public partial class MainWindow
     private MainViewModel? _hoverVm;
     private int? _pendingHoverOffset;
     private DateTime _lastHoverInputUtc;
+    private GraphWindow? _graphWindow;
 
     public MainWindow()
     {
         InitializeComponent();
         FileOverview.OffsetClicked += FileOverview_OffsetClicked;
+        StructureGraphControl.NavigateToByteRange += StructureGraphControl_NavigateToByteRange;
         _hoverTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(33)
@@ -177,5 +179,47 @@ public partial class MainWindow
         }
 
         return null;
+    }
+
+    private void StructureGraphControl_NavigateToByteRange(object? sender, GifByteRange range)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        int rowIndex = range.Start / 16;
+        if (rowIndex >= 0 && rowIndex < vm.HexRows.Count)
+            HexGrid.ScrollIntoView(vm.HexRows[rowIndex]);
+
+        vm.NavigateToByteRange(range);
+    }
+
+    private void GraphTab_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        if (_graphWindow is null)
+        {
+            _graphWindow = new GraphWindow
+            {
+                Owner = this,
+                DataContext = vm
+            };
+            _graphWindow.NavigateToByteRange += StructureGraphControl_NavigateToByteRange;
+            _graphWindow.Closed += (_, _) =>
+            {
+                _graphWindow.NavigateToByteRange -= StructureGraphControl_NavigateToByteRange;
+                _graphWindow = null;
+            };
+            _graphWindow.Show();
+        }
+        else
+        {
+            if (_graphWindow.WindowState == WindowState.Minimized)
+                _graphWindow.WindowState = WindowState.Normal;
+            _graphWindow.Activate();
+        }
+
+        e.Handled = true;
     }
 }
