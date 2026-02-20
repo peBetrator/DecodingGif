@@ -114,10 +114,49 @@
                 <Border BorderBrush="LightGray" BorderThickness="1" Padding="4" Margin="0,0,0,12">
                     <Image Source="{Binding PreviewImage}" Stretch="Uniform" Height="220"/>
                 </Border>
+                <TextBlock Text="{Binding FrameLabel}" Margin="0,0,0,8" FontWeight="SemiBold"/>
+
+                <GroupBox Header="Animation Playback" Margin="0,0,0,12">
+                    <StackPanel Orientation="Vertical" Margin="5">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5">
+                            <Button Command="{Binding RestartCommand}" Content="⏮" Width="30" Height="30" ToolTip="Restart Animation"/>
+                            <Button Command="{Binding StepBackwardCommand}" Content="⏪" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Step Backward"/>
+                            <Button Command="{Binding PlayCommand}" Content="▶" Width="35" Height="30" Margin="4,0,0,0" ToolTip="Play Animation"/>
+                            <Button Command="{Binding PauseCommand}" Content="⏸" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Pause Animation"/>
+                            <Button Command="{Binding StopCommand}" Content="⏹" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Stop Animation"/>
+                            <Button Command="{Binding StepForwardCommand}" Content="⏩" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Step Forward"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5">
+                            <TextBlock Text="Speed:" VerticalAlignment="Center"/>
+                            <Slider Value="{Binding PlaybackSpeed}" Minimum="0.1" Maximum="5.0" Width="100" TickFrequency="0.1" IsSnapToTickEnabled="True" Margin="6,0,0,0"/>
+                            <TextBlock Text="{Binding PlaybackSpeedText}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <CheckBox IsChecked="{Binding IsLooping}" Content="Loop Animation" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                        <TextBlock Text="{Binding TotalAnimationText}" HorizontalAlignment="Center" FontWeight="Bold" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="Animation Timeline" Margin="0,0,0,12">
+                    <DataGrid ItemsSource="{Binding FrameTimeline}" AutoGenerateColumns="False" SelectedIndex="{Binding SelectedFrameIndex}" IsReadOnly="True" CanUserAddRows="False" Height="180">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="#" Binding="{Binding Index}" Width="35"/>
+                            <DataGridTextColumn Header="Delay" Binding="{Binding DelayText}" Width="65"/>
+                            <DataGridTextColumn Header="Time" Binding="{Binding CumulativeTimeMs, StringFormat={}{0}ms}" Width="70"/>
+                            <DataGridTextColumn Header="Frame" Binding="{Binding FrameDetails}" Width="170"/>
+                            <DataGridTextColumn Header="Disposal" Binding="{Binding DisposalText}" Width="70"/>
+                            <DataGridTextColumn Header="Alpha" Binding="{Binding HasTransparency}" Width="60"/>
+                            <DataGridTextColumn Header="TrIdx" Binding="{Binding TransparentIndex}" Width="55"/>
+                            <DataGridTextColumn Header="LCT" Binding="{Binding HasLocalColorTable}" Width="50"/>
+                            <DataGridTextColumn Header="LCT Size" Binding="{Binding LocalColorTableSize}" Width="70"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </GroupBox>
+
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                     <Button Content="Prev" Command="{Binding PrevFrameCommand}" Width="60"/>
                     <Button Content="Next" Command="{Binding NextFrameCommand}" Width="60" Margin="8,0,0,0"/>
-                    <TextBlock Text="{Binding FrameLabel}" Margin="12,0,0,0" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <TextBlock Text="Info" FontWeight="Bold" Margin="0,0,0,6"/>

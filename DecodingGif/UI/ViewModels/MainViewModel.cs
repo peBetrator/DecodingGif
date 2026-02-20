@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using WinForms = System.Windows.Forms;
 using DecodingGif.Core.Editing;
 using DecodingGif.Core.Models;
@@ -22,7 +23,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly GifParser _parser = new();
     private readonly HexRowsBuilder _hexBuilder = new();
     private readonly GifStructureService _structure = new();
+    private readonly GifAnimationService _animation = new();
     private readonly IByteEditPolicy _editPolicy;
+    private readonly DispatcherTimer _playbackTimer;
+
+    private readonly RelayCommand _prevFrameRelayCommand;
+    private readonly RelayCommand _nextFrameRelayCommand;
+    private readonly RelayCommand _playRelayCommand;
+    private readonly RelayCommand _pauseRelayCommand;
+    private readonly RelayCommand _stopRelayCommand;
+    private readonly RelayCommand _stepBackwardRelayCommand;
+    private readonly RelayCommand _stepForwardRelayCommand;
+    private readonly RelayCommand _restartRelayCommand;
 
     private ObservableCollection<HexRow> _hexRows = new();
     public ObservableCollection<HexRow> HexRows
@@ -125,14 +137,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public int SelectedFrameIndex
     {
         get => _selectedFrameIndex;
-        private set
+        set
         {
-            if (_selectedFrameIndex == value)
+            int normalized = value;
+            if (FrameCount > 0)
+                normalized = Math.Clamp(normalized, 0, FrameCount - 1);
+            else if (normalized < 0)
+                normalized = 0;
+
+            if (_selectedFrameIndex == normalized)
                 return;
-            _selectedFrameIndex = value;
+
+            _selectedFrameIndex = normalized;
             OnPropertyChanged();
             OnPropertyChanged(nameof(FrameLabel));
             UpdatePreview();
+            ResetPlaybackTimerForCurrentFrame();
+            RaisePlaybackCanExecuteChanged();
         }
     }
 
@@ -147,10 +168,91 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _frameCount = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(FrameLabel));
+            RaisePlaybackCanExecuteChanged();
         }
     }
 
     public string FrameLabel => FrameCount > 0 ? $"Frame {SelectedFrameIndex + 1}/{FrameCount}" : "Frame -";
+
+    private ObservableCollection<GifFrameInfo> _frameTimeline = new();
+    public ObservableCollection<GifFrameInfo> FrameTimeline
+    {
+        get => _frameTimeline;
+        private set
+        {
+            _frameTimeline = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(TotalAnimationText));
+            ResetPlaybackTimerForCurrentFrame();
+            RaisePlaybackCanExecuteChanged();
+        }
+    }
+
+    private double _playbackSpeed = 1.0;
+    public double PlaybackSpeed
+    {
+        get => _playbackSpeed;
+        set
+        {
+            double clamped = Math.Clamp(value, 0.1, 5.0);
+            if (Math.Abs(_playbackSpeed - clamped) < 0.0001)
+                return;
+
+            _playbackSpeed = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PlaybackSpeedText));
+            ResetPlaybackTimerForCurrentFrame();
+        }
+    }
+
+    public string PlaybackSpeedText => $"{PlaybackSpeed:0.0}x";
+
+    private bool _isLooping = true;
+    public bool IsLooping
+    {
+        get => _isLooping;
+        set { _isLooping = value; OnPropertyChanged(); }
+    }
+
+    private bool _isPlaying;
+    public bool IsPlaying
+    {
+        get => _isPlaying;
+        private set
+        {
+            if (_isPlaying == value)
+                return;
+
+            _isPlaying = value;
+            OnPropertyChanged();
+            RaisePlaybackCanExecuteChanged();
+        }
+    }
+
+    private bool _isInfiniteLoopInFile = true;
+    public bool IsInfiniteLoopInFile
+    {
+        get => _isInfiniteLoopInFile;
+        private set
+        {
+            _isInfiniteLoopInFile = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(TotalAnimationText));
+        }
+    }
+
+    public string TotalAnimationText
+    {
+        get
+        {
+            if (FrameTimeline.Count == 0)
+                return "Animation: no frames";
+
+            int duration = _animation.CalculateTotalDuration(FrameTimeline);
+            string loop = IsInfiniteLoopInFile ? "infinite" : "finite";
+            return $"Duration: {duration} ms | Frames: {FrameTimeline.Count} | File loop: {loop}";
+        }
+    }
 
     private BitmapSource? _previewImage;
     public BitmapSource? PreviewImage
@@ -432,19 +534,49 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand OpenFileCommand { get; }
     public ICommand PrevFrameCommand { get; }
     public ICommand NextFrameCommand { get; }
+    public ICommand PlayCommand { get; }
+    public ICommand PauseCommand { get; }
+    public ICommand StopCommand { get; }
+    public ICommand StepBackwardCommand { get; }
+    public ICommand StepForwardCommand { get; }
+    public ICommand RestartCommand { get; }
     public ICommand PickColorCommand { get; }
 
     public MainViewModel()
     {
+        _playbackTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(100)
+        };
+        _playbackTimer.Tick += OnPlaybackTick;
+
         OpenFileCommand = new RelayCommand(OpenFile);
-        PrevFrameCommand = new RelayCommand(SelectPrevFrame);
-        NextFrameCommand = new RelayCommand(SelectNextFrame);
+        _prevFrameRelayCommand = new RelayCommand(SelectPrevFrame, CanStepBackward);
+        _nextFrameRelayCommand = new RelayCommand(SelectNextFrame, CanStepForward);
+        _playRelayCommand = new RelayCommand(PlayAnimation, CanPlay);
+        _pauseRelayCommand = new RelayCommand(PauseAnimation, CanPause);
+        _stopRelayCommand = new RelayCommand(StopAnimation, CanStop);
+        _stepBackwardRelayCommand = new RelayCommand(StepBackward, CanStepBackward);
+        _stepForwardRelayCommand = new RelayCommand(StepForward, CanStepForward);
+        _restartRelayCommand = new RelayCommand(RestartAnimation, CanRestart);
+
+        PrevFrameCommand = _prevFrameRelayCommand;
+        NextFrameCommand = _nextFrameRelayCommand;
+        PlayCommand = _playRelayCommand;
+        PauseCommand = _pauseRelayCommand;
+        StopCommand = _stopRelayCommand;
+        StepBackwardCommand = _stepBackwardRelayCommand;
+        StepForwardCommand = _stepForwardRelayCommand;
+        RestartCommand = _restartRelayCommand;
+
         PickColorCommand = new RelayCommand(PickColorForSelectedPalette);
         _editPolicy = new VmByteEditPolicy(this);
+        RaisePlaybackCanExecuteChanged();
     }
 
     private void OpenFile()
     {
+        PauseAnimation();
         ErrorText = null;
         SelectedByte = null;
         SelectedByteMeaning = null;
@@ -472,12 +604,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
             StructureRoots = new ObservableCollection<GifStructureNode>(tree);
             GctRange = ranges.FirstOrDefault(r => r.Kind == GifBlockKind.GlobalColorTable);
             SelectedLctRange = null;
+            FrameTimeline = _animation.BuildFrameTimeline(CurrentFile, ranges);
+            IsInfiniteLoopInFile = _animation.IsInfiniteLoop(CurrentFile, ranges);
+            IsLooping = IsInfiniteLoopInFile;
+            OnPropertyChanged(nameof(TotalAnimationText));
             _selectedFrameIndex = 0;
             OnPropertyChanged(nameof(SelectedFrameIndex));
             OnPropertyChanged(nameof(FrameLabel));
 
             HexRows = _hexBuilder.Build(bytes, _editPolicy);
             UpdatePreview();
+            RaisePlaybackCanExecuteChanged();
         }
         catch (Exception ex)
         {
@@ -489,13 +626,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
             GctRange = null;
             SelectedLctRange = null;
             PreviewImage = null;
+            FrameTimeline = new ObservableCollection<GifFrameInfo>();
+            IsInfiniteLoopInFile = true;
+            IsLooping = true;
+            IsPlaying = false;
+            _playbackTimer.Stop();
             FrameCount = 0;
             _selectedFrameIndex = 0;
             OnPropertyChanged(nameof(SelectedFrameIndex));
             OnPropertyChanged(nameof(FrameLabel));
+            OnPropertyChanged(nameof(TotalAnimationText));
             ClearSelectedColorInfo();
             ClearSelectedGceInfo();
             ClearSelectedLsdInfo();
+            RaisePlaybackCanExecuteChanged();
         }
     }
 
@@ -545,14 +689,115 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void SetSelectedFrameIndex(int index)
     {
-        if (FrameCount > 0)
-            index = Math.Clamp(index, 0, FrameCount - 1);
-
         SelectedFrameIndex = index;
     }
 
-    private void SelectPrevFrame() => SetSelectedFrameIndex(SelectedFrameIndex - 1);
-    private void SelectNextFrame() => SetSelectedFrameIndex(SelectedFrameIndex + 1);
+    private void SelectPrevFrame()
+    {
+        PauseAnimation();
+        SetSelectedFrameIndex(SelectedFrameIndex - 1);
+    }
+
+    private void SelectNextFrame()
+    {
+        PauseAnimation();
+        SetSelectedFrameIndex(SelectedFrameIndex + 1);
+    }
+
+    private void StepBackward()
+    {
+        PauseAnimation();
+        SetSelectedFrameIndex(SelectedFrameIndex - 1);
+    }
+
+    private void StepForward()
+    {
+        PauseAnimation();
+        SetSelectedFrameIndex(SelectedFrameIndex + 1);
+    }
+
+    private void RestartAnimation()
+    {
+        SetSelectedFrameIndex(0);
+        if (IsPlaying)
+            ResetPlaybackTimerForCurrentFrame();
+    }
+
+    private void PlayAnimation()
+    {
+        if (FrameCount == 0)
+            return;
+
+        IsPlaying = true;
+        ResetPlaybackTimerForCurrentFrame();
+        _playbackTimer.Start();
+    }
+
+    private void PauseAnimation()
+    {
+        _playbackTimer.Stop();
+        IsPlaying = false;
+    }
+
+    private void StopAnimation()
+    {
+        PauseAnimation();
+        SetSelectedFrameIndex(0);
+    }
+
+    private void OnPlaybackTick(object? sender, EventArgs e)
+    {
+        if (!IsPlaying || FrameCount == 0)
+        {
+            PauseAnimation();
+            return;
+        }
+
+        int nextIndex = SelectedFrameIndex + 1;
+        if (nextIndex < FrameCount)
+        {
+            SetSelectedFrameIndex(nextIndex);
+            return;
+        }
+
+        if (IsLooping)
+        {
+            SetSelectedFrameIndex(0);
+            return;
+        }
+
+        StopAnimation();
+    }
+
+    private void ResetPlaybackTimerForCurrentFrame()
+    {
+        int delayMs = 100;
+        if (SelectedFrameIndex >= 0 && SelectedFrameIndex < FrameTimeline.Count)
+            delayMs = Math.Max(FrameTimeline[SelectedFrameIndex].DelayMs, 10);
+
+        double adjustedDelay = delayMs / PlaybackSpeed;
+        int safeDelay = Math.Max((int)Math.Round(adjustedDelay), 1);
+        _playbackTimer.Interval = TimeSpan.FromMilliseconds(safeDelay);
+    }
+
+    private void RaisePlaybackCanExecuteChanged()
+    {
+        _prevFrameRelayCommand.RaiseCanExecuteChanged();
+        _nextFrameRelayCommand.RaiseCanExecuteChanged();
+        _playRelayCommand.RaiseCanExecuteChanged();
+        _pauseRelayCommand.RaiseCanExecuteChanged();
+        _stopRelayCommand.RaiseCanExecuteChanged();
+        _stepBackwardRelayCommand.RaiseCanExecuteChanged();
+        _stepForwardRelayCommand.RaiseCanExecuteChanged();
+        _restartRelayCommand.RaiseCanExecuteChanged();
+    }
+
+    private bool CanPlay() => FrameCount > 0 && !IsPlaying;
+    private bool CanPause() => IsPlaying;
+    private bool CanStop() => FrameCount > 0 && (IsPlaying || SelectedFrameIndex != 0);
+    private bool CanRestart() => FrameCount > 0;
+    private bool CanStepBackward() => FrameCount > 0 && SelectedFrameIndex > 0;
+    private bool CanStepForward() => FrameCount > 0 && SelectedFrameIndex < FrameCount - 1;
 
     private void PickColorForSelectedPalette()
     {
@@ -593,11 +838,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var file = CurrentFile;
         if (file is null)
         {
+            PauseAnimation();
             PreviewImage = null;
             FrameCount = 0;
             ClearSelectedColorInfo();
             ClearSelectedGceInfo();
             ClearSelectedLsdInfo();
+            RaisePlaybackCanExecuteChanged();
             return;
         }
 
@@ -607,9 +854,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var decoder = new GifBitmapDecoder(ms, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
             int count = decoder.Frames.Count;
             FrameCount = count;
+            OnPropertyChanged(nameof(TotalAnimationText));
             if (count == 0)
             {
+                PauseAnimation();
                 PreviewImage = null;
+                RaisePlaybackCanExecuteChanged();
                 return;
             }
 
@@ -623,6 +873,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(SelectedFrameIndex));
                 OnPropertyChanged(nameof(FrameLabel));
             }
+            ResetPlaybackTimerForCurrentFrame();
+            RaisePlaybackCanExecuteChanged();
 
             var frame = decoder.Frames[index];
             if (frame is null)
@@ -636,10 +888,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch
         {
+            PauseAnimation();
             PreviewImage = null;
             FrameCount = 0;
             ClearSelectedGceInfo();
             ClearSelectedLsdInfo();
+            RaisePlaybackCanExecuteChanged();
         }
     }
 
