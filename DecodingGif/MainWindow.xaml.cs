@@ -15,12 +15,14 @@ public partial class MainWindow
     private int? _pendingHoverOffset;
     private DateTime _lastHoverInputUtc;
     private GraphWindow? _graphWindow;
+    private MemoryLayoutWindow? _memoryLayoutWindow;
 
     public MainWindow()
     {
         InitializeComponent();
         FileOverview.OffsetClicked += FileOverview_OffsetClicked;
         StructureGraphControl.NavigateToByteRange += StructureGraphControl_NavigateToByteRange;
+        MemoryLayoutControl.NavigateToOffset += MemoryLayoutControl_NavigateToOffset;
         _hoverTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(33)
@@ -218,6 +220,49 @@ public partial class MainWindow
             if (_graphWindow.WindowState == WindowState.Minimized)
                 _graphWindow.WindowState = WindowState.Normal;
             _graphWindow.Activate();
+        }
+
+        e.Handled = true;
+    }
+
+    private void MemoryLayoutControl_NavigateToOffset(object? sender, int offset)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        int rowIndex = offset / 16;
+        if (rowIndex >= 0 && rowIndex < vm.HexRows.Count)
+            HexGrid.ScrollIntoView(vm.HexRows[rowIndex]);
+
+        vm.SetHoveredByteOffset(offset);
+        vm.SelectByte(offset);
+    }
+
+    private void MemoryLayoutTab_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        if (_memoryLayoutWindow is null)
+        {
+            _memoryLayoutWindow = new MemoryLayoutWindow
+            {
+                Owner = this,
+                DataContext = vm
+            };
+            _memoryLayoutWindow.NavigateToOffset += MemoryLayoutControl_NavigateToOffset;
+            _memoryLayoutWindow.Closed += (_, _) =>
+            {
+                _memoryLayoutWindow.NavigateToOffset -= MemoryLayoutControl_NavigateToOffset;
+                _memoryLayoutWindow = null;
+            };
+            _memoryLayoutWindow.Show();
+        }
+        else
+        {
+            if (_memoryLayoutWindow.WindowState == WindowState.Minimized)
+                _memoryLayoutWindow.WindowState = WindowState.Normal;
+            _memoryLayoutWindow.Activate();
         }
 
         e.Handled = true;

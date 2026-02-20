@@ -307,6 +307,64 @@
                             </ScrollViewer>
                         </Grid>
                     </TabItem>
+
+                    <TabItem x:Name="MemoryLayoutTab" Header="Memory Layout" MouseDoubleClick="MemoryLayoutTab_MouseDoubleClick">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Orientation="Vertical" Margin="4">
+                                <WrapPanel>
+                                    <TextBlock Text="Bytes per row:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <ComboBox Width="85"
+                                              ItemsSource="{Binding BytesPerRowOptions}"
+                                              SelectedItem="{Binding BytesPerRow}"/>
+                                    <CheckBox Content="Show alignment grid" IsChecked="{Binding ShowAlignmentGrid}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                    <CheckBox Content="Show empty space" IsChecked="{Binding ShowEmptySpace}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                    <CheckBox Content="Compress large blocks" IsChecked="{Binding CompressLargeBlocks}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                </WrapPanel>
+
+                                <WrapPanel Margin="0,6,0,0">
+                                    <TextBlock Text="Legend:" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,8,0"/>
+                                    <Border Width="14" Height="14" Background="#1e40af" BorderBrush="Gray" BorderThickness="0.5" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Header/LSD" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                    <Border Width="14" Height="14" Background="#16a34a" BorderBrush="Gray" BorderThickness="0.5" Margin="0,0,4,0"/>
+                                    <TextBlock Text="GCT" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                    <Border Width="14" Height="14" Background="#22c55e" BorderBrush="Gray" BorderThickness="0.5" Margin="0,0,4,0"/>
+                                    <TextBlock Text="LCT" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                    <Border Width="14" Height="14" Background="#9333ea" BorderBrush="Gray" BorderThickness="0.5" Margin="0,0,4,0"/>
+                                    <TextBlock Text="GCE" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                    <Border Width="14" Height="14" Background="#ea580c" BorderBrush="Gray" BorderThickness="0.5" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Image Descriptor" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                    <Border Width="14" Height="14" Background="#fb923c" BorderBrush="Gray" BorderThickness="0.5" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Image Data" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                    <Border Width="14" Height="14" Background="#a855f7" BorderBrush="Gray" BorderThickness="0.5" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Extensions" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                    <Border Width="14" Height="14" Background="#f3f4f6" BorderBrush="Gray" BorderThickness="0.5" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Empty" VerticalAlignment="Center"/>
+                                </WrapPanel>
+                            </StackPanel>
+
+                            <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                                <ctrl:MemoryLayoutControl x:Name="MemoryLayoutControl"
+                                                          Layout="{Binding MemoryLayout}"
+                                                          ShowAlignmentGrid="{Binding ShowAlignmentGrid}"
+                                                          ShowEmptySpace="{Binding ShowEmptySpace}"/>
+                            </ScrollViewer>
+
+                            <GroupBox Grid.Row="2" Header="Memory Statistics" Margin="4">
+                                <WrapPanel>
+                                    <TextBlock Text="{Binding MemoryFileSizeText}" Margin="8,0"/>
+                                    <TextBlock Text="{Binding DataUtilizationText}" Margin="8,0"/>
+                                    <TextBlock Text="{Binding LargestBlockText}" Margin="8,0"/>
+                                    <TextBlock Text="{Binding FragmentationText}" Margin="8,0"/>
+                                </WrapPanel>
+                            </GroupBox>
+                        </Grid>
+                    </TabItem>
                 </TabControl>
                 </StackPanel>
             </ScrollViewer>

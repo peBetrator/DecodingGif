@@ -25,6 +25,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly GifStructureService _structure = new();
     private readonly GifAnimationService _animation = new();
     private readonly StructureDependencyGraphBuilder _graphBuilder = new();
+    private readonly MemoryLayoutBuilder _memoryLayoutBuilder = new();
     private readonly IByteEditPolicy _editPolicy;
     private readonly DispatcherTimer _playbackTimer;
 
@@ -95,6 +96,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged();
             OnPropertyChanged(nameof(StatusText));
             OnPropertyChanged(nameof(FileLength));
+            OnPropertyChanged(nameof(MemoryFileSizeText));
+            OnPropertyChanged(nameof(DataUtilizationText));
+            OnPropertyChanged(nameof(LargestBlockText));
+            OnPropertyChanged(nameof(FragmentationText));
         }
     }
 
@@ -299,6 +304,78 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _showEdgeLabels;
         set { _showEdgeLabels = value; OnPropertyChanged(); }
     }
+
+    private MemoryLayoutVisualization _memoryLayout = new();
+    public MemoryLayoutVisualization MemoryLayout
+    {
+        get => _memoryLayout;
+        private set
+        {
+            _memoryLayout = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(MemoryFileSizeText));
+            OnPropertyChanged(nameof(DataUtilizationText));
+            OnPropertyChanged(nameof(LargestBlockText));
+            OnPropertyChanged(nameof(FragmentationText));
+        }
+    }
+
+    private int _bytesPerRow = 48;
+    public int BytesPerRow
+    {
+        get => _bytesPerRow;
+        set
+        {
+            int normalized = Math.Clamp(value, 16, 256);
+            if (_bytesPerRow == normalized)
+                return;
+            _bytesPerRow = normalized;
+            OnPropertyChanged();
+            RebuildMemoryLayout();
+        }
+    }
+
+    public int[] BytesPerRowOptions { get; } = [16, 32, 48, 64, 128];
+
+    private bool _showAlignmentGrid = true;
+    public bool ShowAlignmentGrid
+    {
+        get => _showAlignmentGrid;
+        set { _showAlignmentGrid = value; OnPropertyChanged(); }
+    }
+
+    private bool _showEmptySpace = true;
+    public bool ShowEmptySpace
+    {
+        get => _showEmptySpace;
+        set
+        {
+            if (_showEmptySpace == value)
+                return;
+            _showEmptySpace = value;
+            OnPropertyChanged();
+            RebuildMemoryLayout();
+        }
+    }
+
+    private bool _compressLargeBlocks = true;
+    public bool CompressLargeBlocks
+    {
+        get => _compressLargeBlocks;
+        set
+        {
+            if (_compressLargeBlocks == value)
+                return;
+            _compressLargeBlocks = value;
+            OnPropertyChanged();
+            RebuildMemoryLayout();
+        }
+    }
+
+    public string MemoryFileSizeText => $"File size: {(CurrentFile?.Bytes.Length ?? 0):N0} bytes";
+    public string DataUtilizationText => $"Data utilization: {CalculateDataUtilization():P1}";
+    public string LargestBlockText => $"Largest block: {FindLargestBlockText()}";
+    public string FragmentationText => $"Fragmentation: {CalculateFragmentation():P1}";
 
     private ObservableCollection<GifFrameInfo> _frameTimeline = new();
     public ObservableCollection<GifFrameInfo> FrameTimeline
@@ -739,6 +816,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             IsLooping = IsInfiniteLoopInFile;
             _fullStructureGraph = _graphBuilder.BuildGraph(CurrentFile, ranges, GraphLayoutMode);
             ApplyGraphFilters();
+            RebuildMemoryLayout();
             OnPropertyChanged(nameof(TotalAnimationText));
             _selectedFrameIndex = 0;
             OnPropertyChanged(nameof(SelectedFrameIndex));
@@ -764,6 +842,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             IsLooping = true;
             _fullStructureGraph = new StructureDependencyGraph();
             StructureGraph = new StructureDependencyGraph();
+            MemoryLayout = new MemoryLayoutVisualization();
             IsPlaying = false;
             _playbackTimer.Stop();
             FrameCount = 0;
@@ -913,6 +992,59 @@ public sealed class MainViewModel : INotifyPropertyChanged
             EdgeType.DataFlow => ShowDataFlowEdges,
             _ => true
         };
+
+    private void RebuildMemoryLayout()
+    {
+        var file = CurrentFile;
+        if (file is null || Blocks.Count == 0)
+        {
+            MemoryLayout = new MemoryLayoutVisualization();
+            return;
+        }
+
+        MemoryLayout = _memoryLayoutBuilder.BuildLayout(file, Blocks, BytesPerRow, ShowEmptySpace, CompressLargeBlocks);
+    }
+
+    private double CalculateDataUtilization()
+    {
+        if (MemoryLayout.Rows.Count == 0)
+            return 0.0;
+
+        int total = MemoryLayout.Rows.Sum(r => r.EndOffset - r.StartOffset + 1);
+        if (total <= 0)
+            return 0.0;
+
+        int data = total - MemoryLayout.Rows.Sum(r => r.EmptyBytes);
+        return Math.Clamp(data / (double)total, 0.0, 1.0);
+    }
+
+    private double CalculateFragmentation()
+    {
+        if (MemoryLayout.Rows.Count == 0)
+            return 0.0;
+
+        int transitions = 0;
+        foreach (var row in MemoryLayout.Rows)
+        {
+            var ordered = row.Blocks.OrderBy(b => b.StartOffset).ToList();
+            for (int i = 1; i < ordered.Count; i++)
+            {
+                if (ordered[i - 1].BlockType != ordered[i].BlockType)
+                    transitions++;
+            }
+        }
+
+        int possible = Math.Max(1, MemoryLayout.Rows.Sum(r => Math.Max(0, r.Blocks.Count - 1)));
+        return Math.Clamp(transitions / (double)possible, 0.0, 1.0);
+    }
+
+    private string FindLargestBlockText()
+    {
+        var biggest = Blocks.OrderByDescending(b => b.Length).FirstOrDefault();
+        if (biggest is null)
+            return "None";
+        return $"{biggest.Kind} ({biggest.Length}B)";
+    }
 
     private void SelectPrevFrame()
     {
