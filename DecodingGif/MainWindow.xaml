@@ -14,6 +14,7 @@
         <conv:HexCellBorderConverter x:Key="HexCellBorderConverter"/>
         <conv:HexCellTooltipConverter x:Key="HexCellTooltipConverter"/>
         <conv:HexCellIsReadOnlyConverter x:Key="HexCellIsReadOnlyConverter"/>
+        <conv:PriorityColorConverter x:Key="PriorityColorConverter"/>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <Style x:Key="HexCellEditingStyle" TargetType="TextBox">
             <Setter Property="IsReadOnly">
@@ -366,6 +367,31 @@
                         </Grid>
                     </TabItem>
                 </TabControl>
+
+                <GroupBox Header="Optimization Suggestions" Margin="0,12,0,0">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="{Binding OptimizationSummary}" Margin="4,2,4,6" FontStyle="Italic"/>
+                        <ScrollViewer MaxHeight="170" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding OptimizationSuggestions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#CBD5E1" BorderThickness="1" Margin="2" Padding="6">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Priority}" FontWeight="Bold" Foreground="{Binding Priority, Converter={StaticResource PriorityColorConverter}}"/>
+                                                    <TextBlock Text="{Binding Title}" FontWeight="Bold" Margin="10,0,0,0"/>
+                                                    <TextBlock Text="{Binding Impact}" Margin="10,0,0,0" FontStyle="Italic"/>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                                <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" FontWeight="SemiBold" Foreground="#1D4ED8" Margin="0,3,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+                </GroupBox>
                 </StackPanel>
             </ScrollViewer>
         </Grid>

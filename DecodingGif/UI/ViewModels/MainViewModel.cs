@@ -26,6 +26,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly GifAnimationService _animation = new();
     private readonly StructureDependencyGraphBuilder _graphBuilder = new();
     private readonly MemoryLayoutBuilder _memoryLayoutBuilder = new();
+    private readonly GifOptimizationAnalyzer _optimizationAnalyzer = new();
     private readonly IByteEditPolicy _editPolicy;
     private readonly DispatcherTimer _playbackTimer;
 
@@ -376,6 +377,35 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string DataUtilizationText => $"Data utilization: {CalculateDataUtilization():P1}";
     public string LargestBlockText => $"Largest block: {FindLargestBlockText()}";
     public string FragmentationText => $"Fragmentation: {CalculateFragmentation():P1}";
+
+    private ObservableCollection<OptimizationSuggestion> _optimizationSuggestions = new();
+    public ObservableCollection<OptimizationSuggestion> OptimizationSuggestions
+    {
+        get => _optimizationSuggestions;
+        private set
+        {
+            _optimizationSuggestions = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasOptimizationSuggestions));
+            OnPropertyChanged(nameof(OptimizationSummary));
+        }
+    }
+
+    public bool HasOptimizationSuggestions => OptimizationSuggestions.Count > 0;
+
+    public string OptimizationSummary
+    {
+        get
+        {
+            if (OptimizationSuggestions.Count == 0)
+                return "No optimization suggestions detected.";
+
+            int savings = OptimizationSuggestions.Where(s => s.BytesSavings.HasValue).Sum(s => s.BytesSavings!.Value);
+            return savings > 0
+                ? $"{OptimizationSuggestions.Count} suggestion(s), potential savings: {savings} bytes."
+                : $"{OptimizationSuggestions.Count} suggestion(s) available.";
+        }
+    }
 
     private ObservableCollection<GifFrameInfo> _frameTimeline = new();
     public ObservableCollection<GifFrameInfo> FrameTimeline
@@ -817,6 +847,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _fullStructureGraph = _graphBuilder.BuildGraph(CurrentFile, ranges, GraphLayoutMode);
             ApplyGraphFilters();
             RebuildMemoryLayout();
+            var optimizationReport = _optimizationAnalyzer.AnalyzeFile(CurrentFile, ranges);
+            OptimizationSuggestions = new ObservableCollection<OptimizationSuggestion>(optimizationReport.Suggestions);
             OnPropertyChanged(nameof(TotalAnimationText));
             _selectedFrameIndex = 0;
             OnPropertyChanged(nameof(SelectedFrameIndex));
@@ -843,6 +875,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _fullStructureGraph = new StructureDependencyGraph();
             StructureGraph = new StructureDependencyGraph();
             MemoryLayout = new MemoryLayoutVisualization();
+            OptimizationSuggestions = new ObservableCollection<OptimizationSuggestion>();
             IsPlaying = false;
             _playbackTimer.Stop();
             FrameCount = 0;
