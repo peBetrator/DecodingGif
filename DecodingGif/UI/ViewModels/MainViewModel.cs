@@ -19,6 +19,9 @@ namespace DecodingGif.UI.ViewModels;
 
 public sealed class MainViewModel : INotifyPropertyChanged
 {
+    private const int MaxLzwVisualizationBytes = 2_000_000;
+    private const int LargeFramePixelThreshold = 4_000_000;
+
     private readonly FileLoader _fileLoader = new();
     private readonly GifParser _parser = new();
     private readonly HexRowsBuilder _hexBuilder = new();
@@ -27,8 +30,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly StructureDependencyGraphBuilder _graphBuilder = new();
     private readonly MemoryLayoutBuilder _memoryLayoutBuilder = new();
     private readonly GifOptimizationAnalyzer _optimizationAnalyzer = new();
+    private readonly LZWStepByStepDecompressor _lzwDecompressor = new();
     private readonly IByteEditPolicy _editPolicy;
     private readonly DispatcherTimer _playbackTimer;
+    private readonly DispatcherTimer _lzwPlaybackTimer;
 
     private readonly RelayCommand _prevFrameRelayCommand;
     private readonly RelayCommand _nextFrameRelayCommand;
@@ -39,6 +44,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly RelayCommand _stepForwardRelayCommand;
     private readonly RelayCommand _restartRelayCommand;
     private readonly RelayCommand _resetGraphLayoutRelayCommand;
+    private readonly RelayCommand _lzwResetRelayCommand;
+    private readonly RelayCommand _lzwStepBackRelayCommand;
+    private readonly RelayCommand _lzwPlayPauseRelayCommand;
+    private readonly RelayCommand _lzwStepForwardRelayCommand;
+    private readonly RelayCommand _lzwStepToEndRelayCommand;
+    private readonly RelayCommand _startLzwVisualizationRelayCommand;
+    private readonly RelayCommand _lzwPlayRelayCommand;
+    private readonly RelayCommand _lzwPauseRelayCommand;
 
     private ObservableCollection<HexRow> _hexRows = new();
     public ObservableCollection<HexRow> HexRows
@@ -184,6 +197,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             UpdatePreview();
             ResetPlaybackTimerForCurrentFrame();
             RaisePlaybackCanExecuteChanged();
+            RaiseLzwPlaybackCanExecuteChanged();
         }
     }
 
@@ -199,6 +213,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged();
             OnPropertyChanged(nameof(FrameLabel));
             RaisePlaybackCanExecuteChanged();
+            RaiseLzwPlaybackCanExecuteChanged();
         }
     }
 
@@ -763,6 +778,156 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private GifByteRange? _selectedColorTableRange;
     private int? _selectedColorBaseOffset;
+    private byte[] _lzwCompressedFrameData = [];
+    private int _lzwMinCodeSize;
+    private string _lzwStatisticsText = "No LZW session.";
+    private string _lzwWarningText = string.Empty;
+
+    private LZWDecompressionState _lzwState = CreateInitialLzwState();
+    public LZWDecompressionState LZWState
+    {
+        get => _lzwState;
+        private set
+        {
+            _lzwState = value;
+            OnPropertyChanged();
+        }
+    }
+
+    private bool _isLzwVisualizationActive;
+    public bool IsLZWVisualizationActive
+    {
+        get => _isLzwVisualizationActive;
+        set
+        {
+            if (_isLzwVisualizationActive == value)
+                return;
+            _isLzwVisualizationActive = value;
+            OnPropertyChanged();
+            RaiseLzwPlaybackCanExecuteChanged();
+        }
+    }
+
+    private LZWStepHistory _lzwHistory = new();
+    public LZWStepHistory LZWHistory
+    {
+        get => _lzwHistory;
+        private set
+        {
+            _lzwHistory = value;
+            OnPropertyChanged();
+            RaiseLzwPlaybackCanExecuteChanged();
+            OnPropertyChanged(nameof(CanLZWStepBackward));
+            OnPropertyChanged(nameof(CanLZWStepForward));
+        }
+    }
+
+    private int _lzwCurrentStep;
+    public int LzwCurrentStep
+    {
+        get => _lzwCurrentStep;
+        private set
+        {
+            int normalized = Math.Max(0, value);
+            if (_lzwCurrentStep == normalized)
+                return;
+            _lzwCurrentStep = normalized;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(LzwProgressText));
+            RaiseLzwPlaybackCanExecuteChanged();
+        }
+    }
+
+    private int _lzwTotalSteps;
+    public int LzwTotalSteps
+    {
+        get => _lzwTotalSteps;
+        private set
+        {
+            int normalized = Math.Max(0, value);
+            if (_lzwTotalSteps == normalized)
+                return;
+            _lzwTotalSteps = normalized;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(LzwProgressText));
+            RaiseLzwPlaybackCanExecuteChanged();
+        }
+    }
+
+    private bool _isLzwPlaying;
+    public bool IsLzwPlaying
+    {
+        get => _isLzwPlaying;
+        private set
+        {
+            if (_isLzwPlaying == value)
+                return;
+            _isLzwPlaying = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(LzwPlayPauseText));
+            RaiseLzwPlaybackCanExecuteChanged();
+        }
+    }
+
+    private int _lzwPlaybackDelayMs = 500;
+    public int LzwPlaybackDelayMs
+    {
+        get => _lzwPlaybackDelayMs;
+        set
+        {
+            int normalized = Math.Clamp(value, 100, 2000);
+            if (_lzwPlaybackDelayMs == normalized)
+                return;
+            _lzwPlaybackDelayMs = normalized;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(LZWAnimationSpeed));
+            _lzwPlaybackTimer.Interval = TimeSpan.FromMilliseconds(_lzwPlaybackDelayMs);
+        }
+    }
+
+    public int LZWAnimationSpeed
+    {
+        get => LzwPlaybackDelayMs;
+        set => LzwPlaybackDelayMs = value;
+    }
+
+    public byte[] LZWCompressedData
+    {
+        get => _lzwCompressedFrameData;
+        private set
+        {
+            _lzwCompressedFrameData = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string LZWStatisticsText
+    {
+        get => _lzwStatisticsText;
+        private set
+        {
+            _lzwStatisticsText = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string LZWWarningText
+    {
+        get => _lzwWarningText;
+        private set
+        {
+            _lzwWarningText = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string LzwProgressText => $"{LzwCurrentStep}/{LzwTotalSteps} steps";
+    public string LzwPlayPauseText => IsLzwPlaying ? "Pause" : "Play";
+    public bool CanLZWStepForward => CanLzwStepForward();
+    public bool CanLZWStepBackward => CanLzwStepBack();
+    public bool CanLZWPlayPause => CanLzwPlayPause();
+    public bool CanLZWReset => CanLzwReset();
+    public bool CanLZWStepToEnd => CanLzwStepToEnd();
 
     public ICommand OpenFileCommand { get; }
     public ICommand PrevFrameCommand { get; }
@@ -775,6 +940,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand RestartCommand { get; }
     public ICommand ResetGraphLayoutCommand { get; }
     public ICommand PickColorCommand { get; }
+    public ICommand LzwResetCommand { get; }
+    public ICommand LzwStepBackCommand { get; }
+    public ICommand LzwPlayPauseCommand { get; }
+    public ICommand LzwStepForwardCommand { get; }
+    public ICommand LzwStepToEndCommand { get; }
+    public ICommand StartLZWVisualizationCommand { get; }
+    public ICommand LZWStepForwardCommand { get; }
+    public ICommand LZWStepBackwardCommand { get; }
+    public ICommand LZWPlayCommand { get; }
+    public ICommand LZWPauseCommand { get; }
+    public ICommand LZWResetCommand { get; }
 
     public MainViewModel()
     {
@@ -783,6 +959,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Interval = TimeSpan.FromMilliseconds(100)
         };
         _playbackTimer.Tick += OnPlaybackTick;
+
+        _lzwPlaybackTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(_lzwPlaybackDelayMs)
+        };
+        _lzwPlaybackTimer.Tick += OnLzwPlaybackTick;
 
         OpenFileCommand = new RelayCommand(OpenFile);
         _prevFrameRelayCommand = new RelayCommand(SelectPrevFrame, CanStepBackward);
@@ -794,6 +976,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _stepForwardRelayCommand = new RelayCommand(StepForward, CanStepForward);
         _restartRelayCommand = new RelayCommand(RestartAnimation, CanRestart);
         _resetGraphLayoutRelayCommand = new RelayCommand(ResetGraphLayout);
+        _startLzwVisualizationRelayCommand = new RelayCommand(StartLzwVisualization, CanStartLzwVisualization);
+        _lzwResetRelayCommand = new RelayCommand(LzwReset, CanLzwReset);
+        _lzwStepBackRelayCommand = new RelayCommand(LzwStepBack, CanLzwStepBack);
+        _lzwPlayPauseRelayCommand = new RelayCommand(LzwTogglePlayPause, CanLzwPlayPause);
+        _lzwPlayRelayCommand = new RelayCommand(StartLzwPlayback, CanLzwPlay);
+        _lzwPauseRelayCommand = new RelayCommand(PauseLzwPlayback, CanLzwPause);
+        _lzwStepForwardRelayCommand = new RelayCommand(LzwStepForward, CanLzwStepForward);
+        _lzwStepToEndRelayCommand = new RelayCommand(LzwStepToEnd, CanLzwStepToEnd);
 
         PrevFrameCommand = _prevFrameRelayCommand;
         NextFrameCommand = _nextFrameRelayCommand;
@@ -806,8 +996,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ResetGraphLayoutCommand = _resetGraphLayoutRelayCommand;
 
         PickColorCommand = new RelayCommand(PickColorForSelectedPalette);
+        LzwResetCommand = _lzwResetRelayCommand;
+        LzwStepBackCommand = _lzwStepBackRelayCommand;
+        LzwPlayPauseCommand = _lzwPlayPauseRelayCommand;
+        LzwStepForwardCommand = _lzwStepForwardRelayCommand;
+        LzwStepToEndCommand = _lzwStepToEndRelayCommand;
+        StartLZWVisualizationCommand = _startLzwVisualizationRelayCommand;
+        LZWStepForwardCommand = _lzwStepForwardRelayCommand;
+        LZWStepBackwardCommand = _lzwStepBackRelayCommand;
+        LZWPlayCommand = _lzwPlayRelayCommand;
+        LZWPauseCommand = _lzwPauseRelayCommand;
+        LZWResetCommand = _lzwResetRelayCommand;
         _editPolicy = new VmByteEditPolicy(this);
         RaisePlaybackCanExecuteChanged();
+        RaiseLzwPlaybackCanExecuteChanged();
     }
 
     private void OpenFile()
@@ -856,6 +1058,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             HexRows = _hexBuilder.Build(bytes, _editPolicy);
             UpdatePreview();
+            InitializeLzwPlaybackSession();
             RaisePlaybackCanExecuteChanged();
         }
         catch (Exception ex)
@@ -878,6 +1081,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
             OptimizationSuggestions = new ObservableCollection<OptimizationSuggestion>();
             IsPlaying = false;
             _playbackTimer.Stop();
+            StopLzwPlayback();
+            LzwCurrentStep = 0;
+            LzwTotalSteps = 0;
+            IsLZWVisualizationActive = false;
+            LZWCompressedData = [];
+            _lzwMinCodeSize = 0;
+            LZWState = CreateInitialLzwState();
+            LZWHistory = new LZWStepHistory();
+            LZWHistory.SaveStep(LZWState);
+            UpdateLzwStatisticsText();
             FrameCount = 0;
             _selectedFrameIndex = 0;
             OnPropertyChanged(nameof(SelectedFrameIndex));
@@ -1103,6 +1316,87 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SetSelectedFrameIndex(SelectedFrameIndex + 1);
     }
 
+    private void StartLzwVisualization()
+    {
+        StopLzwPlayback();
+        LZWWarningText = string.Empty;
+
+        if (!TryGetSelectedFrameLzwData(out byte[] compressedData, out int minCodeSize))
+        {
+            return;
+        }
+
+        LZWCompressedData = compressedData;
+        _lzwMinCodeSize = minCodeSize;
+
+        LZWState = _lzwDecompressor.Initialize(LZWCompressedData, _lzwMinCodeSize);
+        LZWHistory = _lzwDecompressor.StepHistory;
+        IsLZWVisualizationActive = true;
+        LzwCurrentStep = LZWHistory.CurrentStepIndex;
+        LzwTotalSteps = EstimateTotalLzwSteps(LZWCompressedData, _lzwMinCodeSize);
+        UpdateLzwStatisticsText();
+        if (!string.IsNullOrWhiteSpace(_lzwDecompressor.LastWarningMessage))
+            LZWWarningText = _lzwDecompressor.LastWarningMessage!;
+        ErrorText = null;
+    }
+
+    private void LzwReset()
+    {
+        if (!IsLZWVisualizationActive || LZWCompressedData.Length == 0 || _lzwMinCodeSize <= 0)
+        {
+            return;
+        }
+
+        StopLzwPlayback();
+        LZWState = _lzwDecompressor.Initialize(LZWCompressedData, _lzwMinCodeSize);
+        LZWHistory = _lzwDecompressor.StepHistory;
+        LzwCurrentStep = LZWHistory.CurrentStepIndex;
+        LzwTotalSteps = EstimateTotalLzwSteps(LZWCompressedData, _lzwMinCodeSize);
+        UpdateLzwStatisticsText();
+    }
+
+    private void LzwStepBack()
+    {
+        StopLzwPlayback();
+        if (LzwCurrentStep <= 0)
+            return;
+
+        var previous = _lzwDecompressor.StepHistory.GetPreviousStep();
+        if (previous is not null)
+        {
+            LZWState = previous;
+            LZWHistory = _lzwDecompressor.StepHistory;
+            LzwCurrentStep = LZWHistory.CurrentStepIndex;
+            UpdateLzwStatisticsText();
+        }
+    }
+
+    private void LzwTogglePlayPause()
+    {
+        if (IsLzwPlaying)
+        {
+            PauseLzwPlayback();
+            return;
+        }
+
+        if (!CanLzwPlayPause())
+            return;
+
+        StartLzwPlayback();
+    }
+
+    private void LzwStepForward()
+    {
+        StopLzwPlayback();
+        TryAdvanceLzwStep();
+    }
+
+    private void LzwStepToEnd()
+    {
+        StopLzwPlayback();
+        LzwCurrentStep = LzwTotalSteps;
+    }
+
     private void RestartAnimation()
     {
         SetSelectedFrameIndex(0);
@@ -1156,6 +1450,34 @@ public sealed class MainViewModel : INotifyPropertyChanged
         StopAnimation();
     }
 
+    private void OnLzwPlaybackTick(object? sender, EventArgs e)
+    {
+        if (!IsLzwPlaying || LzwTotalSteps <= 0)
+        {
+            StopLzwPlayback();
+            return;
+        }
+
+        if (LzwCurrentStep >= LzwTotalSteps)
+        {
+            StopLzwPlayback();
+            return;
+        }
+
+        try
+        {
+            if (!TryAdvanceLzwStep())
+            {
+                StopLzwPlayback();
+            }
+        }
+        catch (Exception ex)
+        {
+            StopLzwPlayback();
+            ErrorText = $"LZW auto-play stopped: {ex.Message}";
+        }
+    }
+
     private void ResetPlaybackTimerForCurrentFrame()
     {
         int delayMs = 100;
@@ -1179,12 +1501,315 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _restartRelayCommand.RaiseCanExecuteChanged();
     }
 
+    private void RaiseLzwPlaybackCanExecuteChanged()
+    {
+        _startLzwVisualizationRelayCommand.RaiseCanExecuteChanged();
+        _lzwPlayRelayCommand.RaiseCanExecuteChanged();
+        _lzwPauseRelayCommand.RaiseCanExecuteChanged();
+        _lzwResetRelayCommand.RaiseCanExecuteChanged();
+        _lzwStepBackRelayCommand.RaiseCanExecuteChanged();
+        _lzwPlayPauseRelayCommand.RaiseCanExecuteChanged();
+        _lzwStepForwardRelayCommand.RaiseCanExecuteChanged();
+        _lzwStepToEndRelayCommand.RaiseCanExecuteChanged();
+        OnPropertyChanged(nameof(CanLZWReset));
+        OnPropertyChanged(nameof(CanLZWStepBackward));
+        OnPropertyChanged(nameof(CanLZWPlayPause));
+        OnPropertyChanged(nameof(CanLZWStepForward));
+        OnPropertyChanged(nameof(CanLZWStepToEnd));
+    }
+
     private bool CanPlay() => FrameCount > 0 && !IsPlaying;
     private bool CanPause() => IsPlaying;
     private bool CanStop() => FrameCount > 0 && (IsPlaying || SelectedFrameIndex != 0);
     private bool CanRestart() => FrameCount > 0;
     private bool CanStepBackward() => FrameCount > 0 && SelectedFrameIndex > 0;
     private bool CanStepForward() => FrameCount > 0 && SelectedFrameIndex < FrameCount - 1;
+
+    private bool CanStartLzwVisualization() => CurrentFile is not null && FrameCount > 0 && SelectedFrameIndex >= 0;
+    private bool CanLzwPlay() => IsLZWVisualizationActive && !IsLzwPlaying && !_lzwDecompressor.IsDecompressionComplete();
+    private bool CanLzwPause() => IsLZWVisualizationActive && IsLzwPlaying;
+    private bool CanLzwReset() => IsLZWVisualizationActive && LZWCompressedData.Length > 0;
+    private bool CanLzwStepBack() => IsLZWVisualizationActive && _lzwDecompressor.CanStepBackward();
+    private bool CanLzwPlayPause() => IsLZWVisualizationActive && (CanLzwPlay() || CanLzwPause());
+    private bool CanLzwStepForward() => IsLZWVisualizationActive && _lzwDecompressor.CanStepForward();
+    private bool CanLzwStepToEnd() => IsLZWVisualizationActive && !_lzwDecompressor.IsDecompressionComplete();
+
+    private void StopLzwPlayback()
+    {
+        _lzwPlaybackTimer.Stop();
+        IsLzwPlaying = false;
+    }
+
+    private void PauseLzwPlayback()
+    {
+        _lzwPlaybackTimer.Stop();
+        IsLzwPlaying = false;
+    }
+
+    private void StartLzwPlayback()
+    {
+        if (!CanLzwPlay())
+        {
+            StopLzwPlayback();
+            return;
+        }
+
+        _lzwPlaybackTimer.Interval = TimeSpan.FromMilliseconds(LzwPlaybackDelayMs);
+        IsLzwPlaying = true;
+        _lzwPlaybackTimer.Start();
+    }
+
+    private bool TryAdvanceLzwStep()
+    {
+        if (!IsLZWVisualizationActive || LZWCompressedData.Length == 0)
+        {
+            return false;
+        }
+
+        if (!_lzwDecompressor.CanStepForward())
+        {
+            return false;
+        }
+
+        var nextFromHistory = _lzwDecompressor.StepHistory.GetNextStep();
+        if (nextFromHistory is not null)
+        {
+            LZWState = nextFromHistory;
+            LZWHistory = _lzwDecompressor.StepHistory;
+            LzwCurrentStep = LZWHistory.CurrentStepIndex;
+            UpdateLzwStatisticsText();
+            return !_lzwDecompressor.IsDecompressionComplete();
+        }
+
+        var updated = _lzwDecompressor.ExecuteNextStep(LZWState, LZWCompressedData);
+        LZWState = updated;
+        LZWHistory = _lzwDecompressor.StepHistory;
+        LzwCurrentStep = LZWHistory.CurrentStepIndex;
+        if (!string.IsNullOrWhiteSpace(_lzwDecompressor.LastErrorMessage))
+            ErrorText = _lzwDecompressor.LastErrorMessage;
+        if (!string.IsNullOrWhiteSpace(_lzwDecompressor.LastWarningMessage))
+            LZWWarningText = _lzwDecompressor.LastWarningMessage!;
+        UpdateLzwStatisticsText();
+        if (_lzwDecompressor.IsDecompressionComplete())
+        {
+            LzwTotalSteps = Math.Max(LzwTotalSteps, LzwCurrentStep);
+            return false;
+        }
+
+        return true;
+    }
+
+    private void InitializeLzwPlaybackSession()
+    {
+        StopLzwPlayback();
+        LzwCurrentStep = 0;
+        LzwTotalSteps = 0;
+        IsLZWVisualizationActive = false;
+        LZWCompressedData = [];
+        _lzwMinCodeSize = 0;
+        LZWState = CreateInitialLzwState();
+        LZWHistory = new LZWStepHistory();
+        LZWHistory.SaveStep(LZWState);
+        LZWWarningText = string.Empty;
+        UpdateLzwStatisticsText();
+    }
+
+    private static LZWDecompressionState CreateInitialLzwState()
+    {
+        var state = new LZWDecompressionState(
+            codeSize: 3,
+            clearCode: 4,
+            endOfInfoCode: 5,
+            nextAvailableCode: 6,
+            bitPosition: 0,
+            step: 0,
+            stepDescription: "LZW visualization initialized.",
+            currentAction: LZWAction.Initialize);
+
+        for (int code = 0; code <= byte.MaxValue; code++)
+        {
+            state.CodeTable[code] = [unchecked((byte)code)];
+        }
+
+        return state;
+    }
+
+    private bool TryGetSelectedFrameLzwData(out byte[] compressedData, out int minCodeSize)
+    {
+        compressedData = [];
+        minCodeSize = 0;
+
+        var file = CurrentFile;
+        if (file is null)
+        {
+            return false;
+        }
+
+        if (!TryGetSelectedFrameRanges(file, out var descriptorRange, out var imageDataRange))
+            return false;
+
+        if (descriptorRange.Length < 10 || descriptorRange.Start < 0 || descriptorRange.Start + 9 >= file.Bytes.Length)
+        {
+            ErrorText = $"Cannot start LZW visualization: Image Descriptor for frame {SelectedFrameIndex + 1} is truncated.";
+            return false;
+        }
+
+        if (file.Bytes[descriptorRange.Start] != 0x2C)
+        {
+            ErrorText = $"Cannot start LZW visualization: invalid Image Descriptor separator at 0x{descriptorRange.Start:X8}.";
+            return false;
+        }
+
+        int width = file.Bytes[descriptorRange.Start + 5] | (file.Bytes[descriptorRange.Start + 6] << 8);
+        int height = file.Bytes[descriptorRange.Start + 7] | (file.Bytes[descriptorRange.Start + 8] << 8);
+        long pixels = (long)width * height;
+        if (pixels > LargeFramePixelThreshold)
+        {
+            LZWWarningText = $"Large frame warning: {width}x{height} ({pixels:N0} px). Visualization can be slower.";
+        }
+
+        int start = imageDataRange.Start;
+        int endExclusive = Math.Min(imageDataRange.EndExclusive, file.Bytes.Length);
+        if (start < 0 || start >= endExclusive)
+        {
+            ErrorText = $"Cannot start LZW visualization: image data range is invalid (start=0x{start:X8}).";
+            return false;
+        }
+
+        // GIF spec: LZW minimum code size is the first byte of Image Data.
+        minCodeSize = file.Bytes[start];
+        if (minCodeSize is < 2 or > 8)
+        {
+            ErrorText = $"Cannot start LZW visualization: invalid LZW minimum code size ({minCodeSize}).";
+            return false;
+        }
+
+        var payload = new List<byte>(Math.Max(0, imageDataRange.Length - 2));
+        int pos = start + 1;
+        bool terminated = false;
+        while (pos < endExclusive)
+        {
+            int subBlockSize = file.Bytes[pos];
+            pos++;
+
+            if (subBlockSize == 0)
+            {
+                terminated = true;
+                break;
+            }
+
+            if (pos + subBlockSize > endExclusive)
+            {
+                ErrorText = "Cannot start LZW visualization: malformed image data sub-block.";
+                return false;
+            }
+
+            for (int i = 0; i < subBlockSize; i++)
+            {
+                payload.Add(file.Bytes[pos + i]);
+            }
+
+            pos += subBlockSize;
+        }
+
+        if (!terminated)
+        {
+            ErrorText = $"Cannot start LZW visualization: image data for frame {SelectedFrameIndex + 1} has no terminating sub-block.";
+            return false;
+        }
+
+        compressedData = payload.ToArray();
+        if (compressedData.Length == 0)
+        {
+            ErrorText = "Cannot start LZW visualization: compressed payload is empty.";
+            return false;
+        }
+
+        if (compressedData.Length > MaxLzwVisualizationBytes)
+        {
+            LZWWarningText = $"Large payload warning: {compressedData.Length:N0} bytes. Trimmed to {MaxLzwVisualizationBytes:N0} for memory safety.";
+            compressedData = compressedData.Take(MaxLzwVisualizationBytes).ToArray();
+        }
+
+        return true;
+    }
+
+    private bool TryGetSelectedFrameRanges(
+        GifFile file,
+        out GifByteRange descriptorRange,
+        out GifByteRange imageDataRange)
+    {
+        descriptorRange = new GifByteRange(GifBlockKind.Unknown, string.Empty, 0, 0);
+        imageDataRange = new GifByteRange(GifBlockKind.Unknown, string.Empty, 0, 0);
+
+        var descriptors = Blocks
+            .Where(b => b.Kind == GifBlockKind.ImageDescriptor)
+            .OrderBy(b => b.Start)
+            .ToList();
+
+        if (SelectedFrameIndex < 0 || SelectedFrameIndex >= descriptors.Count)
+        {
+            ErrorText = "Cannot start LZW visualization: selected frame is out of range.";
+            return false;
+        }
+
+        descriptorRange = descriptors[SelectedFrameIndex];
+        int descriptorStart = descriptorRange.Start;
+        int nextDescriptorStart = SelectedFrameIndex < descriptors.Count - 1
+            ? descriptors[SelectedFrameIndex + 1].Start
+            : int.MaxValue;
+
+        var imageData = Blocks
+            .Where(b => b.Kind == GifBlockKind.ImageData && b.Start > descriptorStart && b.Start < nextDescriptorStart)
+            .OrderBy(b => b.Start)
+            .FirstOrDefault();
+
+        if (imageData is null || imageData.Length < 2)
+        {
+            ErrorText = $"Cannot start LZW visualization: Image Data block for frame {SelectedFrameIndex + 1} is missing.";
+            return false;
+        }
+
+        if (imageData.Start < 0 || imageData.Start >= file.Bytes.Length)
+        {
+            ErrorText = $"Cannot start LZW visualization: Image Data offset is out of file bounds (0x{imageData.Start:X8}).";
+            return false;
+        }
+
+        imageDataRange = imageData;
+        return true;
+    }
+
+    private static int EstimateTotalLzwSteps(byte[] compressedData, int minCodeSize)
+    {
+        if (compressedData.Length == 0 || minCodeSize <= 0)
+            return 1;
+
+        int bits = compressedData.Length * 8;
+        int baseCodeSize = minCodeSize + 1;
+        return Math.Max(1, bits / Math.Max(baseCodeSize, 1));
+    }
+
+    private void UpdateLzwStatisticsText()
+    {
+        if (!IsLZWVisualizationActive || LZWCompressedData.Length == 0)
+        {
+            LZWStatisticsText = "No LZW session.";
+            return;
+        }
+
+        try
+        {
+            var stats = _lzwDecompressor.GetDecompressionStatistics();
+            LZWStatisticsText =
+                $"Input: {stats.TotalInputBytes}B | Output: {stats.OutputBytes}B | " +
+                $"Progress: {stats.ProgressPercent:0.0}% | Dict: {stats.DictionarySize} | CodeSize: {stats.CurrentCodeSize}";
+        }
+        catch
+        {
+            LZWStatisticsText = $"Step: {LzwCurrentStep}/{LzwTotalSteps}";
+        }
+    }
 
     private void PickColorForSelectedPalette()
     {
