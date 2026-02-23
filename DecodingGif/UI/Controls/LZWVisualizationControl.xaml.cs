@@ -519,11 +519,12 @@ public partial class LZWVisualizationControl : WpfUserControl
 
         const double leftPadding = 10;
         const double headerHeight = 30;
+        const double footerHeight = 24;
         const double indexColumnChars = 7;
         double indexColumnWidth = indexColumnChars * charWidth;
         double textStartX = area.X + leftPadding + indexColumnWidth;
         double rowsTop = area.Y + headerHeight;
-        double rowsHeight = Math.Max(0, area.Height - headerHeight - 10);
+        double rowsHeight = Math.Max(0, area.Height - headerHeight - footerHeight - 8);
         double bitsAreaWidth = Math.Max(20, area.Width - (textStartX - area.X) - 10);
 
         int bytesPerRow = Math.Max(1, (int)(bitsAreaWidth / (charWidth * 9)));
@@ -615,14 +616,22 @@ public partial class LZWVisualizationControl : WpfUserControl
 
         if (DecompressionState is not null)
         {
+            var footerRect = new Rect(area.X + 6, area.Bottom - footerHeight, area.Width - 12, footerHeight - 4);
+            var footerFill = new SolidColorBrush(WpfColor.FromArgb(215, 220, 252, 231));
+            var footerBorder = new WpfPen(new SolidColorBrush(WpfColor.FromRgb(5, 150, 105)), 0.8);
+            footerFill.Freeze();
+            footerBorder.Freeze();
+            drawingContext.DrawRoundedRectangle(footerFill, footerBorder, footerRect, 4, 4);
+
             DrawText(
                 drawingContext,
                 $"Code size: {DecompressionState.CodeSize} bits | Range: [{highlightStart}..{highlightEnd}]",
-                area.X + 10,
-                area.Bottom - 18,
+                footerRect.X + 6,
+                footerRect.Y + 3,
                 10,
-                WpfBrushes.SlateGray,
-                FontWeights.SemiBold);
+                WpfBrushes.DarkGreen,
+                FontWeights.Bold,
+                "Consolas");
         }
     }
 
