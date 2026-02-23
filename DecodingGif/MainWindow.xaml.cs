@@ -16,6 +16,7 @@ public partial class MainWindow
     private DateTime _lastHoverInputUtc;
     private GraphWindow? _graphWindow;
     private MemoryLayoutWindow? _memoryLayoutWindow;
+    private LZWWindow? _lzwWindow;
 
     public MainWindow()
     {
@@ -263,6 +264,31 @@ public partial class MainWindow
             if (_memoryLayoutWindow.WindowState == WindowState.Minimized)
                 _memoryLayoutWindow.WindowState = WindowState.Normal;
             _memoryLayoutWindow.Activate();
+        }
+
+        e.Handled = true;
+    }
+
+    private void LzwTab_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        if (_lzwWindow is null)
+        {
+            _lzwWindow = new LZWWindow
+            {
+                Owner = this,
+                DataContext = vm
+            };
+            _lzwWindow.Closed += (_, _) => _lzwWindow = null;
+            _lzwWindow.Show();
+        }
+        else
+        {
+            if (_lzwWindow.WindowState == WindowState.Minimized)
+                _lzwWindow.WindowState = WindowState.Normal;
+            _lzwWindow.Activate();
         }
 
         e.Handled = true;

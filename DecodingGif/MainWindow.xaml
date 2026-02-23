@@ -202,6 +202,32 @@
                     </DataGrid>
                 </GroupBox>
 
+                <GroupBox Header="LZW Playback Controls" Margin="0,0,0,12">
+                    <StackPanel Margin="5">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,6">
+                            <Button Content="Reset" Command="{Binding LzwResetCommand}" Width="70" Height="28"/>
+                            <Button Content="StepBack" Command="{Binding LzwStepBackCommand}" Width="80" Height="28" Margin="6,0,0,0"/>
+                            <Button Content="{Binding LzwPlayPauseText}" Command="{Binding LzwPlayPauseCommand}" Width="90" Height="28" Margin="6,0,0,0"/>
+                            <Button Content="StepForward" Command="{Binding LzwStepForwardCommand}" Width="95" Height="28" Margin="6,0,0,0"/>
+                            <Button Content="StepToEnd" Command="{Binding LzwStepToEndCommand}" Width="85" Height="28" Margin="6,0,0,0"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Speed (ms):" VerticalAlignment="Center"/>
+                            <Slider Minimum="100"
+                                    Maximum="2000"
+                                    TickFrequency="100"
+                                    IsSnapToTickEnabled="True"
+                                    Width="180"
+                                    Margin="8,0,0,0"
+                                    Value="{Binding LzwPlaybackDelayMs}"/>
+                            <TextBlock Text="{Binding LzwPlaybackDelayMs, StringFormat={}{0} ms}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding LzwProgressText}" FontWeight="SemiBold" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </GroupBox>
+
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                     <Button Content="Prev" Command="{Binding PrevFrameCommand}" Width="60"/>
                     <Button Content="Next" Command="{Binding NextFrameCommand}" Width="60" Margin="8,0,0,0"/>
@@ -363,6 +389,76 @@
                                     <TextBlock Text="{Binding LargestBlockText}" Margin="8,0"/>
                                     <TextBlock Text="{Binding FragmentationText}" Margin="8,0"/>
                                 </WrapPanel>
+                            </GroupBox>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem x:Name="LzwTab" Header="LZW Decompression" MouseDoubleClick="LzwTab_MouseDoubleClick">
+                        <Grid Margin="4">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <GroupBox Grid.Row="0" Header="Controls" Margin="0,0,0,6">
+                                <StackPanel Margin="6">
+                                    <WrapPanel>
+                                        <Button Content="Start"
+                                                Command="{Binding StartLZWVisualizationCommand}"
+                                                Width="72"
+                                                Margin="0,0,6,0"/>
+                                        <Button Content="Reset"
+                                                Command="{Binding LZWResetCommand}"
+                                                Width="72"
+                                                Margin="0,0,6,0"/>
+                                        <Button Content="Step Back"
+                                                Command="{Binding LZWStepBackwardCommand}"
+                                                Width="82"
+                                                Margin="0,0,6,0"/>
+                                        <Button Content="Play"
+                                                Command="{Binding LZWPlayCommand}"
+                                                Width="68"
+                                                Margin="0,0,6,0"/>
+                                        <Button Content="Pause"
+                                                Command="{Binding LZWPauseCommand}"
+                                                Width="68"
+                                                Margin="0,0,6,0"/>
+                                        <Button Content="Step Forward"
+                                                Command="{Binding LZWStepForwardCommand}"
+                                                Width="95"/>
+                                    </WrapPanel>
+
+                                    <WrapPanel Margin="0,8,0,0">
+                                        <TextBlock Text="Speed (ms):" VerticalAlignment="Center"/>
+                                        <Slider Minimum="100"
+                                                Maximum="2000"
+                                                TickFrequency="100"
+                                                IsSnapToTickEnabled="True"
+                                                Width="180"
+                                                Margin="8,0,0,0"
+                                                Value="{Binding LZWAnimationSpeed}"/>
+                                        <TextBlock Text="{Binding LZWAnimationSpeed, StringFormat={}{0} ms}"
+                                                   Margin="8,0,0,0"
+                                                   VerticalAlignment="Center"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </GroupBox>
+
+                            <Border Grid.Row="1" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="4">
+                                <ctrl:LZWVisualizationControl DecompressionState="{Binding LZWState}"
+                                                              CompressedData="{Binding LZWCompressedData}"
+                                                              IsVisualizationActive="{Binding IsLZWVisualizationActive}"
+                                                              ErrorMessage="{Binding ErrorText}"/>
+                            </Border>
+
+                            <GroupBox Grid.Row="2" Header="Status" Margin="0,6,0,0">
+                                <StackPanel Margin="6">
+                                    <TextBlock Text="{Binding LzwProgressText}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding LZWStatisticsText}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding LZWWarningText}" Margin="0,4,0,0" TextWrapping="Wrap" Foreground="#B45309"/>
+                                    <TextBlock Text="{Binding IsLZWVisualizationActive, StringFormat=LZW Active: {0}}" Margin="0,4,0,0"/>
+                                </StackPanel>
                             </GroupBox>
                         </Grid>
                     </TabItem>
