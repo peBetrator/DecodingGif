@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -18,6 +19,7 @@ public partial class MainWindow
     private MemoryLayoutWindow? _memoryLayoutWindow;
     private LZWWindow? _lzwWindow;
     private PaletteWindow? _paletteWindow;
+    private AnimationPropertiesWindow? _animationPropertiesWindow;
 
     public MainWindow()
     {
@@ -319,4 +321,41 @@ public partial class MainWindow
 
         e.Handled = true;
     }
+
+    private void AnimationPropertiesTab_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        if (_animationPropertiesWindow is null)
+        {
+            _animationPropertiesWindow = new AnimationPropertiesWindow
+            {
+                Owner = this,
+                DataContext = vm
+            };
+            _animationPropertiesWindow.Closed += (_, _) => _animationPropertiesWindow = null;
+            _animationPropertiesWindow.Show();
+        }
+        else
+        {
+            if (_animationPropertiesWindow.WindowState == WindowState.Minimized)
+                _animationPropertiesWindow.WindowState = WindowState.Normal;
+            _animationPropertiesWindow.Activate();
+        }
+
+        e.Handled = true;
+    }
+
+    private void Window_Closing(object? sender, CancelEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        if (vm.TryHandleCloseRequest())
+            return;
+
+        e.Cancel = true;
+    }
+
 }

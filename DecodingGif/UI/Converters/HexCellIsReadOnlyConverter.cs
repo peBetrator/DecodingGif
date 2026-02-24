@@ -31,21 +31,9 @@ public sealed class HexCellIsReadOnlyConverter : IMultiValueConverter
 
         int absoluteOffset = rowOffset + index;
 
-        bool isSafeMode = values[2] is bool safe && safe;
-        var gctRange = values[3] as GifByteRange;
-        bool allowSelectedLct = values[4] is bool allow && allow;
-        var selectedLctRange = values[5] as GifByteRange;
-
-        if (!isSafeMode)
-            return false;
-
-        if (gctRange is not null && gctRange.Contains(absoluteOffset))
-            return false;
-
-        if (allowSelectedLct && selectedLctRange is not null && selectedLctRange.Contains(absoluteOffset))
-            return false;
-
-        return true;
+        _ = values;
+        _ = absoluteOffset;
+        return false;
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) =>
