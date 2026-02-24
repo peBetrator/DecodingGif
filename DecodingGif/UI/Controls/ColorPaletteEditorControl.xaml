@@ -1,0 +1,231 @@
+<UserControl x:Class="DecodingGif.UI.Controls.ColorPaletteEditorControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="520"
+             d:DesignWidth="900">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="260"/>
+        </Grid.ColumnDefinitions>
+
+        <Grid Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5">
+                <RadioButton Content="Global Color Table"
+                             Margin="0,0,10,0"
+                             IsChecked="{Binding IsGCTMode}"/>
+                <RadioButton Content="Local Color Table"
+                             Margin="0,0,10,0"
+                             IsChecked="{Binding IsLCTMode}"/>
+                <ComboBox Width="110"
+                          ItemsSource="{Binding AvailableFrames}"
+                          SelectedItem="{Binding SelectedFrameIndex}"
+                          IsEnabled="{Binding HasLocalColorTables}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding StringFormat=Frame {0}}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                    <ComboBox.Style>
+                        <Style TargetType="ComboBox">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsLCTMode}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ComboBox.Style>
+                </ComboBox>
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" Margin="6,0,6,4">
+                <TextBlock Text="{Binding LoadedColorsCount, StringFormat=Loaded colors: {0}}" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding NoPaletteMessage}" Foreground="#b45309">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowNoPaletteMessage}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <Button Content="Switch to GCT"
+                        Command="{Binding SwitchToGlobalModeCommand}"
+                        Margin="0,4,0,0"
+                        HorizontalAlignment="Left">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CanSwitchToGlobalMode}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </StackPanel>
+
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Colors}" Margin="4">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="{Binding GridColumns}"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <ToggleButton IsChecked="{Binding IsSelected}"
+                                          Width="20"
+                                          Height="20"
+                                          Margin="1"
+                                          Background="{Binding Brush}"
+                                          BorderBrush="#334155"
+                                          BorderThickness="1"
+                                          ToolTip="{Binding Hex}">
+                                <ToggleButton.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Edit Color..." Command="{Binding EditColorCommand}"/>
+                                        <MenuItem Header="Copy Color" Command="{Binding CopyColorCommand}"/>
+                                        <MenuItem Header="Paste Color" Command="{Binding PasteColorCommand}"/>
+                                        <Separator/>
+                                        <MenuItem Header="Replace All Instances..." Command="{Binding ReplaceAllCommand}"/>
+                                        <MenuItem Header="Adjust Brightness +10%" Command="{Binding AdjustBrightnessCommand}"/>
+                                        <MenuItem Header="Adjust Saturation +10%" Command="{Binding AdjustSaturationCommand}"/>
+                                    </ContextMenu>
+                                </ToggleButton.ContextMenu>
+                                <ToggleButton.Style>
+                                    <Style TargetType="ToggleButton">
+                                        <Setter Property="BorderBrush" Value="#334155"/>
+                                        <Setter Property="BorderThickness" Value="1"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsUsed}" Value="False">
+                                                <Setter Property="Opacity" Value="0.35"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsModified}" Value="True">
+                                                <Setter Property="BorderBrush" Value="#f59e0b"/>
+                                                <Setter Property="BorderThickness" Value="2"/>
+                                            </DataTrigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter Property="BorderBrush" Value="#dc2626"/>
+                                                <Setter Property="BorderThickness" Value="2"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ToggleButton.Style>
+                            </ToggleButton>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <StatusBar Grid.Row="3">
+                <StatusBarItem>
+                    <TextBlock Text="{Binding SelectedColorsCount, StringFormat=Selected: {0}}"/>
+                </StatusBarItem>
+                <StatusBarItem>
+                    <TextBlock Text="{Binding TotalColorsCount, StringFormat=Total: {0}}"/>
+                </StatusBarItem>
+                <StatusBarItem>
+                    <TextBlock Text="{Binding UnusedColorsCount, StringFormat=Unused: {0}}"/>
+                </StatusBarItem>
+            </StatusBar>
+        </Grid>
+
+        <Grid Grid.Column="1" Margin="8,0,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <GroupBox Grid.Row="0" Header="Search &amp; Filter" Margin="0,0,0,8">
+                <StackPanel Margin="6">
+                    <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search by index, RGB value, or #RRGGBB"/>
+                    <CheckBox Content="Show only used colors" IsChecked="{Binding ShowOnlyUsed}" Margin="0,6,0,0"/>
+                    <CheckBox Content="Show similar to selection" IsChecked="{Binding ShowSimilar}" Margin="0,2,0,0"/>
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Grid.Row="1" Header="Batch Operations" Margin="0,0,0,8">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="6">
+                        <TextBlock Text="Brightness factor" FontWeight="SemiBold"/>
+                        <TextBox Text="{Binding BatchBrightnessFactor, StringFormat=F2}" Margin="0,2,0,0"/>
+                        <Button Content="Apply Brightness" Command="{Binding BatchBrightnessCommand}" Margin="0,6,0,0"/>
+
+                        <TextBlock Text="Contrast factor" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                        <TextBox Text="{Binding BatchContrastFactor, StringFormat=F2}" Margin="0,2,0,0"/>
+                        <Button Content="Apply Contrast" Command="{Binding BatchContrastCommand}" Margin="0,6,0,0"/>
+
+                        <TextBlock Text="Hue shift (-180..180)" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                        <TextBox Text="{Binding BatchHueShift, StringFormat=F0}" Margin="0,2,0,0"/>
+                        <Button Content="Apply Hue Shift" Command="{Binding BatchHueCommand}" Margin="0,6,0,0"/>
+
+                        <TextBlock Text="Replace with (#RRGGBB)" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                        <TextBox Text="{Binding ReplaceHexColor}" Margin="0,2,0,0"/>
+                        <Button Content="Replace Selected" Command="{Binding BatchReplaceCommand}" Margin="0,6,0,0"/>
+
+                        <Separator Margin="0,8,0,6"/>
+                        <Button Content="Select All" Command="{Binding SelectAllCommand}"/>
+                        <Button Content="Select Unused" Command="{Binding SelectUnusedCommand}" Margin="0,4,0,0"/>
+                        <Button Content="Clear Selection" Command="{Binding ClearSelectionCommand}" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </GroupBox>
+
+            <GroupBox Grid.Row="2" Header="History (10)" Margin="0,0,0,8">
+                <StackPanel Margin="6">
+                    <ListBox ItemsSource="{Binding RecentOperations}" MaxHeight="100">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Description}" FontSize="10" TextWrapping="Wrap"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,6,0,0">
+                        <Button Content="{Binding UndoDescription}" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}" Margin="0,0,6,0"/>
+                        <Button Content="{Binding RedoDescription}" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo}"/>
+                    </StackPanel>
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Grid.Row="3" Header="Changes">
+                <StackPanel Margin="6">
+                    <TextBlock Text="Unsaved changes"
+                               Foreground="#c2410c"
+                               FontWeight="Bold"
+                               Margin="0,0,0,6">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasUnsavedChanges}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <Button Content="Save Changes" Command="{Binding SaveChangesCommand}" IsEnabled="{Binding HasUnsavedChanges}"/>
+                    <Button Content="Reset to Original" Command="{Binding ResetChangesCommand}" IsEnabled="{Binding HasUnsavedChanges}" Margin="0,4,0,0"/>
+                </StackPanel>
+            </GroupBox>
+        </Grid>
+    </Grid>
+</UserControl>

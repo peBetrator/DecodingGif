@@ -17,6 +17,7 @@ public partial class MainWindow
     private GraphWindow? _graphWindow;
     private MemoryLayoutWindow? _memoryLayoutWindow;
     private LZWWindow? _lzwWindow;
+    private PaletteWindow? _paletteWindow;
 
     public MainWindow()
     {
@@ -289,6 +290,31 @@ public partial class MainWindow
             if (_lzwWindow.WindowState == WindowState.Minimized)
                 _lzwWindow.WindowState = WindowState.Normal;
             _lzwWindow.Activate();
+        }
+
+        e.Handled = true;
+    }
+
+    private void PaletteTab_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        if (_paletteWindow is null)
+        {
+            _paletteWindow = new PaletteWindow
+            {
+                Owner = this,
+                DataContext = vm
+            };
+            _paletteWindow.Closed += (_, _) => _paletteWindow = null;
+            _paletteWindow.Show();
+        }
+        else
+        {
+            if (_paletteWindow.WindowState == WindowState.Minimized)
+                _paletteWindow.WindowState = WindowState.Normal;
+            _paletteWindow.Activate();
         }
 
         e.Handled = true;

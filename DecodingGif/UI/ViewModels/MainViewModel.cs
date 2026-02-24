@@ -13,6 +13,8 @@ using DecodingGif.Core.Editing;
 using DecodingGif.Core.Models;
 using DecodingGif.Core.Parsing;
 using DecodingGif.Core.Services;
+using DecodingGif.UI.UndoRedo;
+using DecodingGif.UI.UndoRedo.Commands;
 using Win32OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 
 namespace DecodingGif.UI.ViewModels;
@@ -52,6 +54,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly RelayCommand _startLzwVisualizationRelayCommand;
     private readonly RelayCommand _lzwPlayRelayCommand;
     private readonly RelayCommand _lzwPauseRelayCommand;
+    private readonly RelayCommand _undoRelayCommand;
+    private readonly RelayCommand _redoRelayCommand;
+    private readonly UndoRedoManager _undoRedoManager = new(10);
+    private readonly ColorPaletteViewModel _paletteEditor = new();
 
     private ObservableCollection<HexRow> _hexRows = new();
     public ObservableCollection<HexRow> HexRows
@@ -192,6 +198,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 return;
 
             _selectedFrameIndex = normalized;
+            _paletteEditor.SetSelectedFrameIndex(normalized);
             OnPropertyChanged();
             OnPropertyChanged(nameof(FrameLabel));
             UpdatePreview();
@@ -928,6 +935,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool CanLZWPlayPause => CanLzwPlayPause();
     public bool CanLZWReset => CanLzwReset();
     public bool CanLZWStepToEnd => CanLzwStepToEnd();
+    public bool CanUndo => _undoRedoManager.CanUndo;
+    public bool CanRedo => _undoRedoManager.CanRedo;
+    public string UndoDescription => _undoRedoManager.UndoDescription is null ? "Undo" : $"Undo {_undoRedoManager.UndoDescription}";
+    public string RedoDescription => _undoRedoManager.RedoDescription is null ? "Redo" : $"Redo {_undoRedoManager.RedoDescription}";
+    public string? LastCommandDescription => _undoRedoManager.LastCommandDescription;
 
     public ICommand OpenFileCommand { get; }
     public ICommand PrevFrameCommand { get; }
@@ -939,6 +951,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand StepForwardCommand { get; }
     public ICommand RestartCommand { get; }
     public ICommand ResetGraphLayoutCommand { get; }
+    public ICommand UndoCommand { get; }
+    public ICommand RedoCommand { get; }
     public ICommand PickColorCommand { get; }
     public ICommand LzwResetCommand { get; }
     public ICommand LzwStepBackCommand { get; }
@@ -967,6 +981,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _lzwPlaybackTimer.Tick += OnLzwPlaybackTick;
 
         OpenFileCommand = new RelayCommand(OpenFile);
+        _undoRelayCommand = new RelayCommand(UndoLastOperation, () => _undoRedoManager.CanUndo);
+        _redoRelayCommand = new RelayCommand(RedoLastOperation, () => _undoRedoManager.CanRedo);
         _prevFrameRelayCommand = new RelayCommand(SelectPrevFrame, CanStepBackward);
         _nextFrameRelayCommand = new RelayCommand(SelectNextFrame, CanStepForward);
         _playRelayCommand = new RelayCommand(PlayAnimation, CanPlay);
@@ -994,6 +1010,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         StepForwardCommand = _stepForwardRelayCommand;
         RestartCommand = _restartRelayCommand;
         ResetGraphLayoutCommand = _resetGraphLayoutRelayCommand;
+        UndoCommand = _undoRelayCommand;
+        RedoCommand = _redoRelayCommand;
 
         PickColorCommand = new RelayCommand(PickColorForSelectedPalette);
         LzwResetCommand = _lzwResetRelayCommand;
@@ -1007,10 +1025,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
         LZWPlayCommand = _lzwPlayRelayCommand;
         LZWPauseCommand = _lzwPauseRelayCommand;
         LZWResetCommand = _lzwResetRelayCommand;
+        _paletteEditor.ColorChanged += OnPaletteColorChanged;
+        _paletteEditor.BatchOperationRequested += OnPaletteBatchOperationRequested;
+        IsPaletteEditingEnabled = false;
+        _undoRedoManager.PropertyChanged += (_, _) => RaiseUndoRedoChanged();
         _editPolicy = new VmByteEditPolicy(this);
+        RaiseUndoRedoChanged();
         RaisePlaybackCanExecuteChanged();
         RaiseLzwPlaybackCanExecuteChanged();
     }
+
+    private bool _isPaletteEditingEnabled;
+    public bool IsPaletteEditingEnabled
+    {
+        get => _isPaletteEditingEnabled;
+        private set
+        {
+            if (_isPaletteEditingEnabled == value)
+                return;
+            _isPaletteEditingEnabled = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public ColorPaletteViewModel PaletteEditor => _paletteEditor;
 
     private void OpenFile()
     {
@@ -1036,6 +1074,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             var bytes = _fileLoader.LoadAllBytes(dlg.FileName);
             CurrentFile = _parser.Parse(dlg.FileName, bytes);
+            _undoRedoManager.Clear();
+            RaiseUndoRedoChanged();
 
             var tree = _structure.BuildStructureTree(CurrentFile);
             var ranges = _structure.BuildRanges(CurrentFile).ToList();
@@ -1058,11 +1098,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             HexRows = _hexBuilder.Build(bytes, _editPolicy);
             UpdatePreview();
+            InitializePaletteEditor();
             InitializeLzwPlaybackSession();
             RaisePlaybackCanExecuteChanged();
         }
         catch (Exception ex)
         {
+            _undoRedoManager.Clear();
+            RaiseUndoRedoChanged();
             CurrentFile = null;
             HoveredByteOffset = null;
             HexRows = new ObservableCollection<HexRow>();
@@ -1099,6 +1142,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ClearSelectedColorInfo();
             ClearSelectedGceInfo();
             ClearSelectedLsdInfo();
+            InitializePaletteEditor();
             RaisePlaybackCanExecuteChanged();
         }
     }
@@ -1518,6 +1562,56 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanLZWStepToEnd));
     }
 
+    private void InitializePaletteEditor()
+    {
+        if (CurrentFile is null || Blocks.Count == 0)
+        {
+            _paletteEditor.LoadFromCurrentFile(null, []);
+            IsPaletteEditingEnabled = false;
+            return;
+        }
+
+        _paletteEditor.LoadFromCurrentFile(CurrentFile, Blocks);
+        _paletteEditor.SetSelectedFrameIndex(SelectedFrameIndex);
+        IsPaletteEditingEnabled = true;
+    }
+
+    private void OnPaletteColorChanged(object? sender, ColorChangeEventArgs e)
+    {
+        RefreshAfterPaletteEdit();
+    }
+
+    private void OnPaletteBatchOperationRequested(object? sender, BatchOperationEventArgs e)
+    {
+        RefreshAfterPaletteEdit();
+    }
+
+    private void RefreshAfterPaletteEdit()
+    {
+        var file = CurrentFile;
+        if (file is null)
+            return;
+
+        HexRows = _hexBuilder.Build(file.Bytes, _editPolicy);
+        UpdatePreview();
+        RebuildMemoryLayout();
+
+        int? selectedOffset = SelectedByte?.Offset;
+        if (selectedOffset.HasValue)
+            SelectByte(Math.Clamp(selectedOffset.Value, 0, Math.Max(0, file.Bytes.Length - 1)));
+    }
+
+    private void RaiseUndoRedoChanged()
+    {
+        _undoRelayCommand.RaiseCanExecuteChanged();
+        _redoRelayCommand.RaiseCanExecuteChanged();
+        OnPropertyChanged(nameof(CanUndo));
+        OnPropertyChanged(nameof(CanRedo));
+        OnPropertyChanged(nameof(UndoDescription));
+        OnPropertyChanged(nameof(RedoDescription));
+        OnPropertyChanged(nameof(LastCommandDescription));
+    }
+
     private bool CanPlay() => FrameCount > 0 && !IsPlaying;
     private bool CanPause() => IsPlaying;
     private bool CanStop() => FrameCount > 0 && (IsPlaying || SelectedFrameIndex != 0);
@@ -1837,11 +1931,82 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
 
         var c = dialog.Color;
-        _editPolicy.SetByte(baseOffset, c.R);
-        _editPolicy.SetByte(baseOffset + 1, c.G);
-        _editPolicy.SetByte(baseOffset + 2, c.B);
+        var command = new SetColorCommand(
+            file.Bytes,
+            baseOffset,
+            new ColorRgb(c.R, c.G, c.B),
+            $"Set color {SelectedColorTableLabel ?? "table"} #{SelectedColorIndex ?? 0} to ({c.R},{c.G},{c.B})");
+        ExecuteColorCommand(command, baseOffset);
+    }
 
-        int refreshOffset = SelectedByte?.Offset ?? baseOffset;
+    private void UndoLastOperation()
+    {
+        if (!_undoRedoManager.Undo())
+            return;
+
+        RefreshAfterEdit();
+        RaiseUndoRedoChanged();
+    }
+
+    private void RedoLastOperation()
+    {
+        if (!_undoRedoManager.Redo())
+            return;
+
+        RefreshAfterEdit();
+        RaiseUndoRedoChanged();
+    }
+
+    private void ExecuteColorCommand(IUndoableCommand command, int fallbackOffset)
+    {
+        _undoRedoManager.Execute(command);
+        RefreshAfterEdit(fallbackOffset);
+        RaiseUndoRedoChanged();
+    }
+
+    public void ReplaceColorInSelectedTable(ColorRgb fromColor, ColorRgb toColor)
+    {
+        var file = CurrentFile;
+        var tableRange = _selectedColorTableRange;
+        if (file is null || tableRange is null)
+            return;
+
+        var command = new ReplaceColorCommand(
+            file.Bytes,
+            tableRange.Start,
+            tableRange.Length,
+            fromColor,
+            toColor,
+            $"Replace color {fromColor} -> {toColor} in {SelectedColorTableLabel ?? "selected table"}");
+        ExecuteColorCommand(command, tableRange.Start);
+    }
+
+    public void AdjustBrightnessInSelectedTable(int delta)
+    {
+        var file = CurrentFile;
+        var tableRange = _selectedColorTableRange;
+        if (file is null || tableRange is null)
+            return;
+
+        var command = new AdjustBrightnessCommand(
+            file.Bytes,
+            tableRange.Start,
+            tableRange.Length,
+            delta,
+            $"Adjust brightness {delta:+#;-#;0} in {SelectedColorTableLabel ?? "selected table"}");
+        ExecuteColorCommand(command, tableRange.Start);
+    }
+
+    private void RefreshAfterEdit(int? fallbackOffset = null)
+    {
+        UpdatePreview();
+
+        var file = CurrentFile;
+        if (file is null)
+            return;
+
+        int refreshOffset = SelectedByte?.Offset ?? _selectedColorBaseOffset ?? fallbackOffset ?? 0;
+        refreshOffset = Math.Clamp(refreshOffset, 0, Math.Max(0, file.Bytes.Length - 1));
         SelectByte(refreshOffset);
     }
 
