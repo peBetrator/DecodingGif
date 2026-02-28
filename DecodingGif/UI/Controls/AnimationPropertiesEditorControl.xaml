@@ -1,0 +1,154 @@
+<UserControl x:Class="DecodingGif.UI.Controls.AnimationPropertiesEditorControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="600"
+             d:DesignWidth="1100">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="2.2*"/>
+            <ColumnDefinition Width="1.2*"/>
+        </Grid.ColumnDefinitions>
+
+        <Grid Grid.Column="0" Margin="0,0,8,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <DataGrid Grid.Row="0"
+                      ItemsSource="{Binding Frames}"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      IsReadOnly="False"
+                      SelectionMode="Single"
+                      SelectedIndex="{Binding SelectedFrameIndex}">
+                <DataGrid.Columns>
+                    <DataGridCheckBoxColumn Header="Sel" Binding="{Binding IsSelected}" Width="45"/>
+                    <DataGridTextColumn Header="#" Binding="{Binding FrameIndex}" IsReadOnly="True" Width="45"/>
+                    <DataGridTextColumn Header="Delay (ms)" Binding="{Binding DelayMs}" Width="90"/>
+
+                    <DataGridTemplateColumn Header="Disposal" Width="170">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ComboBox ItemsSource="{Binding DataContext.DisposalMethods, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          SelectedValuePath="Value"
+                                          DisplayMemberPath="Name"
+                                          SelectedValue="{Binding DisposalMethod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                    <ComboBox.ItemContainerStyle>
+                                        <Style TargetType="ComboBoxItem">
+                                            <Setter Property="ToolTip" Value="{Binding Description}"/>
+                                        </Style>
+                                    </ComboBox.ItemContainerStyle>
+                                </ComboBox>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridCheckBoxColumn Header="Transp" Binding="{Binding HasTransparency}" Width="65"/>
+                    <DataGridTextColumn Header="Tr Index" Binding="{Binding TransparentColorIndex}" Width="75"/>
+                    <DataGridCheckBoxColumn Header="Has GCE" Binding="{Binding HasGraphicControlExtension}" IsReadOnly="True" Width="70"/>
+                    <DataGridTemplateColumn Header="Actions" Width="105">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="▲"
+                                            Width="28"
+                                            Height="22"
+                                            Margin="0,0,3,0"
+                                            Click="MoveUp_Click"
+                                            ToolTip="Move Frame Up"/>
+                                    <Button Content="▼"
+                                            Width="28"
+                                            Height="22"
+                                            Margin="0,0,3,0"
+                                            Click="MoveDown_Click"
+                                            ToolTip="Move Frame Down"/>
+                                    <Button Content="🗑"
+                                            Width="28"
+                                            Height="22"
+                                            Click="DeleteRow_Click"
+                                            ToolTip="Delete Frame"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <GroupBox Grid.Row="1" Header="Timeline" Margin="0,8,0,0">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Frames}" Margin="6">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="4,0">
+                                    <Border Width="{Binding TimelineBarWidth}"
+                                            Height="16"
+                                            Background="#3b82f6"
+                                            BorderBrush="#1e3a8a"
+                                            BorderThickness="1"
+                                            ToolTip="{Binding DelayMs, StringFormat=Frame delay: {0} ms}"/>
+                                    <TextBlock Text="{Binding FrameIndex, StringFormat=F{0}}" FontSize="10" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </GroupBox>
+        </Grid>
+
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <GroupBox Grid.Row="0" Header="Bulk Edit">
+                <StackPanel Margin="8">
+                    <TextBlock Text="{Binding SelectedFramesCount, StringFormat=Selected frames: {0}}" Margin="0,0,0,6"/>
+                    <TextBlock Text="Delay (ms)"/>
+                    <TextBox Text="{Binding BulkDelayMs, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,6"/>
+
+                    <TextBlock Text="Disposal"/>
+                    <ComboBox ItemsSource="{Binding DisposalMethods}"
+                              SelectedValuePath="Value"
+                              DisplayMemberPath="Name"
+                              SelectedValue="{Binding BulkDisposalMethod}"
+                              Margin="0,2,0,6"/>
+
+                    <CheckBox Content="Enable Transparency" IsChecked="{Binding BulkHasTransparency}" Margin="0,0,0,6"/>
+
+                    <TextBlock Text="Transparent Index"/>
+                    <TextBox Text="{Binding BulkTransparentColorIndex, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,8"/>
+
+                    <WrapPanel>
+                        <Button Content="Apply" Command="{Binding ApplyBulkCommand}" Margin="0,0,6,0"/>
+                        <Button Content="Select All" Command="{Binding SelectAllFramesCommand}" Margin="0,0,6,0"/>
+                        <Button Content="Clear" Command="{Binding ClearSelectionCommand}" Margin="0,0,6,0"/>
+                        <Button Content="Delete Selected" Command="{Binding DeleteSelectedFramesCommand}"/>
+                    </WrapPanel>
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Grid.Row="1" Header="Disposal Info" Margin="0,8,0,8">
+                <TextBlock Margin="8" TextWrapping="Wrap"
+                           Text="0 None: no disposal specified.
+1 Keep: keep previous frame.
+2 Clear: restore background.
+3 Restore: restore previous frame state."/>
+            </GroupBox>
+
+            <GroupBox Grid.Row="2" Header="Validation Warnings">
+                <ListBox ItemsSource="{Binding ValidationWarnings}" Margin="6"/>
+            </GroupBox>
+        </Grid>
+    </Grid>
+</UserControl>

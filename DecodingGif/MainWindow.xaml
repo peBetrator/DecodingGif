@@ -7,6 +7,7 @@
         xmlns:conv="clr-namespace:DecodingGif.UI.Converters"
         xmlns:ctrl="clr-namespace:DecodingGif.UI.Controls"
         mc:Ignorable="d"
+        Closing="Window_Closing"
         Title="DecodingGif" Height="700" Width="1400">
 
     <Window.Resources>
@@ -45,8 +46,23 @@
     <DockPanel Margin="12">
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
             <Button Content="Open GIF" Command="{Binding OpenFileCommand}" Height="32" Width="120"/>
-            <CheckBox Content="Safe Mode" IsChecked="{Binding IsSafeMode}" Margin="12,0,0,0" VerticalAlignment="Center"/>
-            <CheckBox Content="Allow editing selected LCT" IsChecked="{Binding AllowSelectedLctEdit}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+            <Button Content="{Binding UndoDescription}" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}" Height="32" Margin="8,0,0,0" MinWidth="120"/>
+            <Button Content="{Binding RedoDescription}" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo}" Height="32" Margin="8,0,0,0" MinWidth="120"/>
+            <Button Content="Save Changes" Command="{Binding SaveChangesCommand}" IsEnabled="{Binding HasUnsavedChanges}" Height="32" Margin="8,0,0,0" MinWidth="120"/>
+            <Button Content="Reset to Original" Command="{Binding ResetChangesCommand}" IsEnabled="{Binding HasUnsavedChanges}" Height="32" Margin="8,0,0,0" MinWidth="140"/>
+            <TextBlock Text="Unsaved changes" Foreground="#c2410c" FontWeight="Bold" Margin="12,0,0,0" VerticalAlignment="Center">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasUnsavedChanges}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+            <TextBlock Text="{Binding LastCommandDescription, StringFormat=Last: {0}}" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding StatusText}" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
         </StackPanel>
 
@@ -205,6 +221,8 @@
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                     <Button Content="Prev" Command="{Binding PrevFrameCommand}" Width="60"/>
                     <Button Content="Next" Command="{Binding NextFrameCommand}" Width="60" Margin="8,0,0,0"/>
+                    <Button Content="Insert" Command="{Binding InsertFrameCommand}" Width="70" Margin="8,0,0,0"/>
+                    <Button Content="Duplicate" Command="{Binding DuplicateFrameCommand}" Width="80" Margin="8,0,0,0"/>
                 </StackPanel>
 
                 <TextBlock Text="Info" FontWeight="Bold" Margin="0,0,0,6"/>
@@ -435,6 +453,17 @@
                                 </StackPanel>
                             </GroupBox>
                         </Grid>
+                    </TabItem>
+
+                    <TabItem x:Name="AnimationPropertiesTab" Header="Animation Properties" MouseDoubleClick="AnimationPropertiesTab_MouseDoubleClick">
+                        <ctrl:AnimationPropertiesEditorControl DataContext="{Binding AnimationPropertiesEditor}"
+                                                               Editor="{Binding}"/>
+                    </TabItem>
+
+                    <TabItem x:Name="PaletteTab" Header="Palette Editor" MouseDoubleClick="PaletteTab_MouseDoubleClick">
+                        <ctrl:ColorPaletteEditorControl DataContext="{Binding PaletteEditor.ColorEditor}"
+                                                        Palette="{Binding}"
+                                                        EditMode="{Binding CurrentMode, Mode=TwoWay}"/>
                     </TabItem>
                 </TabControl>
 

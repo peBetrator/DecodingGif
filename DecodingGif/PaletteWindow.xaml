@@ -1,0 +1,19 @@
+<Window x:Class="DecodingGif.PaletteWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ctrl="clr-namespace:DecodingGif.UI.Controls"
+        mc:Ignorable="d"
+        Title="Palette Editor"
+        Width="1400"
+        Height="900"
+        MinWidth="900"
+        MinHeight="600">
+
+    <Grid Margin="8">
+        <ctrl:ColorPaletteEditorControl DataContext="{Binding PaletteEditor.ColorEditor}"
+                                        Palette="{Binding}"
+                                        EditMode="{Binding CurrentMode, Mode=TwoWay}"/>
+    </Grid>
+</Window>
