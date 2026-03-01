@@ -57,8 +57,24 @@ public partial class MainWindow
         if (DataContext is not MainViewModel vm)
             return;
 
-        if (target == TutorialDetachedWindowTarget.Lzw)
-            EnsureLzwWindowOpen(vm);
+        switch (target)
+        {
+            case TutorialDetachedWindowTarget.Graph:
+                EnsureGraphWindowOpen(vm);
+                break;
+            case TutorialDetachedWindowTarget.MemoryLayout:
+                EnsureMemoryLayoutWindowOpen(vm);
+                break;
+            case TutorialDetachedWindowTarget.Lzw:
+                EnsureLzwWindowOpen(vm);
+                break;
+            case TutorialDetachedWindowTarget.AnimationProperties:
+                EnsureAnimationPropertiesWindowOpen(vm);
+                break;
+            case TutorialDetachedWindowTarget.Palette:
+                EnsurePaletteWindowOpen(vm);
+                break;
+        }
     }
 
     private void StructureTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
@@ -231,6 +247,12 @@ public partial class MainWindow
         if (DataContext is not MainViewModel vm)
             return;
 
+        EnsureGraphWindowOpen(vm);
+        e.Handled = true;
+    }
+
+    private void EnsureGraphWindowOpen(MainViewModel vm)
+    {
         if (_graphWindow is null)
         {
             _graphWindow = new GraphWindow
@@ -252,8 +274,6 @@ public partial class MainWindow
                 _graphWindow.WindowState = WindowState.Normal;
             _graphWindow.Activate();
         }
-
-        e.Handled = true;
     }
 
     private void MemoryLayoutControl_NavigateToOffset(object? sender, int offset)
@@ -274,6 +294,12 @@ public partial class MainWindow
         if (DataContext is not MainViewModel vm)
             return;
 
+        EnsureMemoryLayoutWindowOpen(vm);
+        e.Handled = true;
+    }
+
+    private void EnsureMemoryLayoutWindowOpen(MainViewModel vm)
+    {
         if (_memoryLayoutWindow is null)
         {
             _memoryLayoutWindow = new MemoryLayoutWindow
@@ -295,8 +321,6 @@ public partial class MainWindow
                 _memoryLayoutWindow.WindowState = WindowState.Normal;
             _memoryLayoutWindow.Activate();
         }
-
-        e.Handled = true;
     }
 
     private void LzwTab_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -333,6 +357,12 @@ public partial class MainWindow
         if (DataContext is not MainViewModel vm)
             return;
 
+        EnsurePaletteWindowOpen(vm);
+        e.Handled = true;
+    }
+
+    private void EnsurePaletteWindowOpen(MainViewModel vm)
+    {
         if (_paletteWindow is null)
         {
             _paletteWindow = new PaletteWindow
@@ -349,8 +379,6 @@ public partial class MainWindow
                 _paletteWindow.WindowState = WindowState.Normal;
             _paletteWindow.Activate();
         }
-
-        e.Handled = true;
     }
 
     private void AnimationPropertiesTab_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -358,6 +386,12 @@ public partial class MainWindow
         if (DataContext is not MainViewModel vm)
             return;
 
+        EnsureAnimationPropertiesWindowOpen(vm);
+        e.Handled = true;
+    }
+
+    private void EnsureAnimationPropertiesWindowOpen(MainViewModel vm)
+    {
         if (_animationPropertiesWindow is null)
         {
             _animationPropertiesWindow = new AnimationPropertiesWindow
@@ -374,8 +408,6 @@ public partial class MainWindow
                 _animationPropertiesWindow.WindowState = WindowState.Normal;
             _animationPropertiesWindow.Activate();
         }
-
-        e.Handled = true;
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)

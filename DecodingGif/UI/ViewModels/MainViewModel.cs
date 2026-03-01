@@ -25,6 +25,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private const int MaxLzwVisualizationBytes = 2_000_000;
     private const int LargeFramePixelThreshold = 4_000_000;
     private const int LzwTabIndex = 3;
+    private const int AnimationPropertiesTabIndex = 4;
     private const int PaletteTabIndex = 5;
 
     private readonly FileLoader _fileLoader = new();
@@ -1442,7 +1443,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
 
         if (step.TabToShow.HasValue)
+        {
             SelectedTabIndex = Math.Max(0, step.TabToShow.Value);
+            RequestDetachedWindowForTutorialTab(step.TabToShow.Value);
+        }
 
         var highlight = ResolveTutorialHighlightRange(step);
         if (highlight is not null)
@@ -1450,6 +1454,29 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         foreach (var action in step.Actions)
             ExecuteTutorialAction(action);
+    }
+
+    private void RequestDetachedWindowForTutorialTab(int tabIndex)
+    {
+        switch (tabIndex)
+        {
+            case 1:
+                RequestTutorialDetachedWindow(TutorialDetachedWindowTarget.Graph);
+                break;
+            case 2:
+                RequestTutorialDetachedWindow(TutorialDetachedWindowTarget.MemoryLayout);
+                break;
+            case 3:
+                RequestTutorialDetachedWindow(TutorialDetachedWindowTarget.Lzw);
+                break;
+            case AnimationPropertiesTabIndex:
+            case 6:
+                RequestTutorialDetachedWindow(TutorialDetachedWindowTarget.AnimationProperties);
+                break;
+            case PaletteTabIndex:
+                RequestTutorialDetachedWindow(TutorialDetachedWindowTarget.Palette);
+                break;
+        }
     }
 
     private GifByteRange? ResolveTutorialHighlightRange(TutorialStep step)
