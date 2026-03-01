@@ -106,7 +106,10 @@
                     EnableColumnVirtualization="True"
                     VirtualizingPanel.IsVirtualizing="True"
                     VirtualizingPanel.VirtualizationMode="Recycling"
+                    VirtualizingPanel.CacheLength="2"
+                    VirtualizingPanel.CacheLengthUnit="Page"
                     ScrollViewer.CanContentScroll="True"
+                    ScrollViewer.IsDeferredScrollingEnabled="True"
                     HeadersVisibility="Column"
                     SelectionMode="Single"
                     SelectionUnit="Cell"
@@ -383,12 +386,31 @@
                             </ScrollViewer>
 
                             <GroupBox Grid.Row="2" Header="Memory Statistics" Margin="4">
-                                <WrapPanel>
-                                    <TextBlock Text="{Binding MemoryFileSizeText}" Margin="8,0"/>
-                                    <TextBlock Text="{Binding DataUtilizationText}" Margin="8,0"/>
-                                    <TextBlock Text="{Binding LargestBlockText}" Margin="8,0"/>
-                                    <TextBlock Text="{Binding FragmentationText}" Margin="8,0"/>
-                                </WrapPanel>
+                                <StackPanel Margin="6,2">
+                                    <TextBlock Text="{Binding MemoryLayoutBuildStatusText}" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                    <WrapPanel>
+                                        <TextBlock Text="{Binding MemoryFileSizeText}" Margin="8,0"/>
+                                        <TextBlock Text="{Binding DataUtilizationText}" Margin="8,0"/>
+                                        <TextBlock Text="{Binding LargestBlockText}" Margin="8,0"/>
+                                        <TextBlock Text="{Binding FragmentationText}" Margin="8,0"/>
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,2,0,0">
+                                        <TextBlock Text="{Binding FileSizeHeadersText}" Margin="8,0"/>
+                                        <TextBlock Text="{Binding FileSizePalettesText}" Margin="8,0"/>
+                                        <TextBlock Text="{Binding FileSizeImageDataText}" Margin="8,0"/>
+                                        <TextBlock Text="{Binding FileSizeExtensionsText}" Margin="8,0"/>
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,2,0,0">
+                                        <TextBlock Text="{Binding MemoryDecompressedText}" Margin="8,0"/>
+                                        <TextBlock Text="{Binding MemoryLzwDictionaryText}" Margin="8,0"/>
+                                        <TextBlock Text="{Binding MemoryAnimationBufferText}" Margin="8,0"/>
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,2,0,0">
+                                        <TextBlock Text="{Binding PerformanceParseComplexityText}" Margin="8,0"/>
+                                        <TextBlock Text="{Binding PerformanceFrameRateText}" Margin="8,0"/>
+                                        <TextBlock Text="{Binding PerformanceDisposalComplexityText}" Margin="8,0"/>
+                                    </WrapPanel>
+                                </StackPanel>
                             </GroupBox>
                         </Grid>
                     </TabItem>

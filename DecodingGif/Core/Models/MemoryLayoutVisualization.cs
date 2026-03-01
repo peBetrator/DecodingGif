@@ -18,6 +18,8 @@ public sealed class MemoryLayoutRow
     public int RowIndex { get; init; }
     public int StartOffset { get; init; }
     public int EndOffset { get; init; }
+    public bool IsCollapsedSummary { get; init; }
+    public int CollapsedRowCount { get; init; }
     public ObservableCollection<MemoryLayoutBlock> Blocks { get; } = new();
     public int ActualDataBytes => Blocks.Sum(b => b.Length);
     public int EmptyBytes => Math.Max(0, (EndOffset - StartOffset + 1) - ActualDataBytes);
@@ -37,4 +39,5 @@ public sealed class MemoryLayoutBlock
     public bool IsCompressed { get; init; }
     public double RelativeStart { get; init; }
     public double RelativeWidth { get; init; }
+    public BlockPerformanceMetrics? PerformanceMetrics { get; init; }
 }

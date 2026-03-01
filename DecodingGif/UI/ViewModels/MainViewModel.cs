@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -24,6 +27,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 {
     private const int MaxLzwVisualizationBytes = 2_000_000;
     private const int LargeFramePixelThreshold = 4_000_000;
+    private const int MaxPerformanceAnalysisFileBytes = 20_000_000;
+    private const int MaxPerformanceAnalysisBlockCount = 20_000;
     private const int LzwTabIndex = 3;
     private const int AnimationPropertiesTabIndex = 4;
     private const int PaletteTabIndex = 5;
@@ -35,11 +40,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly GifAnimationService _animation = new();
     private readonly StructureDependencyGraphBuilder _graphBuilder = new();
     private readonly MemoryLayoutBuilder _memoryLayoutBuilder = new();
+    private readonly PerformanceAnalyzer _performanceAnalyzer = new();
     private readonly GifOptimizationAnalyzer _optimizationAnalyzer = new();
     private readonly LZWStepByStepDecompressor _lzwDecompressor = new();
     private readonly IByteEditPolicy _editPolicy;
     private readonly DispatcherTimer _playbackTimer;
     private readonly DispatcherTimer _lzwPlaybackTimer;
+    private CancellationTokenSource? _memoryLayoutCts;
+    private int _memoryLayoutBuildGeneration;
+    private bool _isMemoryLayoutBuilding;
 
     private readonly RelayCommand _prevFrameRelayCommand;
     private readonly RelayCommand _nextFrameRelayCommand;
@@ -74,8 +83,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private byte[]? _originalBytes;
     private byte[]? _savedBytes;
 
-    private ObservableCollection<HexRow> _hexRows = new();
-    public ObservableCollection<HexRow> HexRows
+    private IList<HexRow> _hexRows = new List<HexRow>();
+    public IList<HexRow> HexRows
     {
         get => _hexRows;
         private set { _hexRows = value; OnPropertyChanged(); }
@@ -131,10 +140,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged();
             OnPropertyChanged(nameof(StatusText));
             OnPropertyChanged(nameof(FileLength));
-            OnPropertyChanged(nameof(MemoryFileSizeText));
-            OnPropertyChanged(nameof(DataUtilizationText));
-            OnPropertyChanged(nameof(LargestBlockText));
-            OnPropertyChanged(nameof(FragmentationText));
+            RaiseMemoryLayoutStatsChanged();
         }
     }
 
@@ -144,7 +150,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<GifByteRange> Blocks
     {
         get => _blocks;
-        private set { _blocks = value; OnPropertyChanged(); }
+        private set
+        {
+            _blocks = value;
+            OnPropertyChanged();
+            RaiseMemoryLayoutStatsChanged();
+        }
     }
 
     private string? _errorText;
@@ -353,10 +364,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             _memoryLayout = value;
             OnPropertyChanged();
-            OnPropertyChanged(nameof(MemoryFileSizeText));
-            OnPropertyChanged(nameof(DataUtilizationText));
-            OnPropertyChanged(nameof(LargestBlockText));
-            OnPropertyChanged(nameof(FragmentationText));
+            RaiseMemoryLayoutStatsChanged();
+        }
+    }
+
+    public bool IsMemoryLayoutBuilding
+    {
+        get => _isMemoryLayoutBuilding;
+        private set
+        {
+            if (_isMemoryLayoutBuilding == value)
+                return;
+            _isMemoryLayoutBuilding = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(MemoryLayoutBuildStatusText));
         }
     }
 
@@ -416,6 +437,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string DataUtilizationText => $"Data utilization: {CalculateDataUtilization():P1}";
     public string LargestBlockText => $"Largest block: {FindLargestBlockText()}";
     public string FragmentationText => $"Fragmentation: {CalculateFragmentation():P1}";
+    public string MemoryLayoutBuildStatusText => IsMemoryLayoutBuilding ? "Rebuilding layout..." : "Layout ready";
+
+    public string FileSizeHeadersText => $"Headers: {FormatBytes(SumBlockSizes(GifBlockKind.Header, GifBlockKind.LogicalScreenDescriptor))}";
+    public string FileSizePalettesText => $"Palettes: {FormatBytes(SumBlockSizes(GifBlockKind.GlobalColorTable, GifBlockKind.LocalColorTable))}";
+    public string FileSizeImageDataText => $"Image Data: {FormatBytes(SumBlockSizes(GifBlockKind.ImageData))}";
+    public string FileSizeExtensionsText => $"Extensions: {FormatBytes(CalculateExtensionBytes())}";
+
+    public string MemoryDecompressedText => $"Decompressed: {FormatBytes(CalculateDecompressedBytes())}";
+    public string MemoryLzwDictionaryText => $"LZW Dictionary: ~{CalculateLzwDictionaryEstimateEntries():N0} entries";
+    public string MemoryAnimationBufferText => $"Animation Buffer: {FormatBytes(CalculateAnimationBufferBytes())}";
+
+    public string PerformanceParseComplexityText => $"Parse Complexity: {Blocks.Count:N0} blocks";
+    public string PerformanceFrameRateText => $"Frame Rate: {CalculateAverageFrameRate():0.##} fps";
+    public string PerformanceDisposalComplexityText => $"Disposal Complexity: {CalculateDisposalComplexityText()}";
 
     private ObservableCollection<OptimizationSuggestion> _optimizationSuggestions = new();
     public ObservableCollection<OptimizationSuggestion> OptimizationSuggestions
@@ -455,6 +490,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _frameTimeline = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(TotalAnimationText));
+            RaiseMemoryLayoutStatsChanged();
             ResetPlaybackTimerForCurrentFrame();
             RaisePlaybackCanExecuteChanged();
         }
@@ -1258,7 +1294,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             RaiseUndoRedoChanged();
             CurrentFile = null;
             HoveredByteOffset = null;
-            HexRows = new ObservableCollection<HexRow>();
+            HexRows = new List<HexRow>();
             ErrorText = ex.Message;
             StructureRoots = new ObservableCollection<GifStructureNode>();
             SelectedByteMeaning = null;
@@ -1645,14 +1681,62 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void RebuildMemoryLayout()
     {
+        _memoryLayoutCts?.Cancel();
+        _memoryLayoutCts?.Dispose();
+
         var file = CurrentFile;
-        if (file is null || Blocks.Count == 0)
+        var blocksSnapshot = Blocks.ToList();
+        if (file is null || blocksSnapshot.Count == 0)
         {
             MemoryLayout = new MemoryLayoutVisualization();
+            IsMemoryLayoutBuilding = false;
             return;
         }
 
-        MemoryLayout = _memoryLayoutBuilder.BuildLayout(file, Blocks, BytesPerRow, ShowEmptySpace, CompressLargeBlocks);
+        int generation = Interlocked.Increment(ref _memoryLayoutBuildGeneration);
+        var cts = new CancellationTokenSource();
+        _memoryLayoutCts = cts;
+        _ = RebuildMemoryLayoutAsync(file, blocksSnapshot, BytesPerRow, ShowEmptySpace, CompressLargeBlocks, generation, cts.Token);
+    }
+
+    private async Task RebuildMemoryLayoutAsync(
+        GifFile file,
+        IReadOnlyList<GifByteRange> blocks,
+        int bytesPerRow,
+        bool showEmptySpace,
+        bool compressLargeBlocks,
+        int generation,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            IsMemoryLayoutBuilding = true;
+
+            IReadOnlyDictionary<BlockPerformanceKey, BlockPerformanceMetrics>? performance = null;
+            if (file.Bytes.Length <= MaxPerformanceAnalysisFileBytes && blocks.Count <= MaxPerformanceAnalysisBlockCount)
+            {
+                performance = await Task.Run(
+                    () => _performanceAnalyzer.Analyze(file, blocks),
+                    cancellationToken);
+            }
+
+            var layout = await Task.Run(
+                () => _memoryLayoutBuilder.BuildLayout(file, blocks, bytesPerRow, showEmptySpace, compressLargeBlocks, performance),
+                cancellationToken);
+
+            if (cancellationToken.IsCancellationRequested || generation != _memoryLayoutBuildGeneration)
+                return;
+
+            MemoryLayout = layout;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (generation == _memoryLayoutBuildGeneration)
+                IsMemoryLayoutBuilding = false;
+        }
     }
 
     private double CalculateDataUtilization()
@@ -1694,6 +1778,121 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (biggest is null)
             return "None";
         return $"{biggest.Kind} ({biggest.Length}B)";
+    }
+
+    private int SumBlockSizes(params GifBlockKind[] kinds)
+    {
+        if (kinds.Length == 0 || Blocks.Count == 0)
+            return 0;
+
+        var set = new HashSet<GifBlockKind>(kinds);
+        return Blocks.Where(b => set.Contains(b.Kind)).Sum(b => b.Length);
+    }
+
+    private int CalculateExtensionBytes()
+    {
+        int known = SumBlockSizes(GifBlockKind.GraphicControlExtension, GifBlockKind.ApplicationExtension);
+        int commentLike = Blocks
+            .Where(b => b.Kind == GifBlockKind.Unknown && b.Name.Contains("0xFE", StringComparison.OrdinalIgnoreCase))
+            .Sum(b => b.Length);
+        return known + commentLike;
+    }
+
+    private long CalculateDecompressedBytes()
+    {
+        var file = CurrentFile;
+        if (file is null)
+            return 0;
+
+        int frames = Math.Max(1, FrameCount);
+        return (long)file.Screen.Width * file.Screen.Height * frames;
+    }
+
+    private int CalculateLzwDictionaryEstimateEntries()
+    {
+        var file = CurrentFile;
+        if (file is null)
+            return 0;
+
+        var imageDataBlocks = Blocks.Where(b => b.Kind == GifBlockKind.ImageData).ToList();
+        if (imageDataBlocks.Count == 0)
+            return 0;
+
+        int sum = 0;
+        int count = 0;
+        foreach (var block in imageDataBlocks)
+        {
+            if (block.Start < 0 || block.Start >= file.Bytes.Length)
+                continue;
+
+            int minCodeSize = file.Bytes[block.Start];
+            if (minCodeSize is < 2 or > 8)
+                continue;
+
+            int initialEntries = (1 << minCodeSize) + 2;
+            sum += Math.Min(4096, initialEntries * 4);
+            count++;
+        }
+
+        return count == 0 ? 0 : (int)Math.Round(sum / (double)count);
+    }
+
+    private long CalculateAnimationBufferBytes()
+    {
+        if (FrameTimeline.Count == 0)
+            return 0;
+
+        long maxPixels = FrameTimeline.Max(f => (long)f.Width * f.Height);
+        return maxPixels;
+    }
+
+    private double CalculateAverageFrameRate()
+    {
+        if (FrameTimeline.Count == 0)
+            return 0;
+
+        double avgDelayMs = FrameTimeline.Average(f => Math.Max(1, f.DelayMs));
+        return 1000.0 / avgDelayMs;
+    }
+
+    private string CalculateDisposalComplexityText()
+    {
+        if (FrameTimeline.Count == 0)
+            return "No frames";
+
+        int total = FrameTimeline.Count;
+        int distinct = FrameTimeline.Select(f => f.Disposal).Distinct().Count();
+        int expensive = FrameTimeline.Count(f => f.Disposal is DisposalMethod.RestoreBackground or DisposalMethod.RestorePrevious);
+        double score = Math.Clamp(((distinct - 1) * 0.35) + ((expensive / (double)total) * 0.65), 0.0, 1.0);
+        return $"{score:P0} (distinct={distinct}, costly={expensive}/{total})";
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024)
+            return $"{bytes:N0} B";
+        if (bytes < 1024 * 1024)
+            return $"{(bytes / 1024d):N1} KB";
+        return $"{(bytes / 1024d / 1024d):N2} MB";
+    }
+
+    private void RaiseMemoryLayoutStatsChanged()
+    {
+        OnPropertyChanged(nameof(MemoryFileSizeText));
+        OnPropertyChanged(nameof(DataUtilizationText));
+        OnPropertyChanged(nameof(LargestBlockText));
+        OnPropertyChanged(nameof(FragmentationText));
+        OnPropertyChanged(nameof(MemoryLayoutBuildStatusText));
+        OnPropertyChanged(nameof(FileSizeHeadersText));
+        OnPropertyChanged(nameof(FileSizePalettesText));
+        OnPropertyChanged(nameof(FileSizeImageDataText));
+        OnPropertyChanged(nameof(FileSizeExtensionsText));
+        OnPropertyChanged(nameof(MemoryDecompressedText));
+        OnPropertyChanged(nameof(MemoryLzwDictionaryText));
+        OnPropertyChanged(nameof(MemoryAnimationBufferText));
+        OnPropertyChanged(nameof(PerformanceParseComplexityText));
+        OnPropertyChanged(nameof(PerformanceFrameRateText));
+        OnPropertyChanged(nameof(PerformanceDisposalComplexityText));
     }
 
     private void SelectPrevFrame()
