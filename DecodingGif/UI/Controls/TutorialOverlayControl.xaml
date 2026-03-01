@@ -1,0 +1,89 @@
+<UserControl x:Class="DecodingGif.UI.Controls.TutorialOverlayControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="360"
+             d:DesignWidth="680">
+    <Grid Background="#4C000000">
+        <Border x:Name="TutorialDialog"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Width="760"
+                MaxWidth="920"
+                Margin="18"
+                BorderBrush="#CBD5E1"
+                BorderThickness="1"
+                CornerRadius="8"
+                Background="#FFF8FAFC">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Border Background="#E2E8F0"
+                        CornerRadius="8,8,0,0"
+                        Padding="12,8"
+                        Cursor="SizeAll"
+                        MouseLeftButtonDown="DragHandle_MouseLeftButtonDown"
+                        MouseMove="DragHandle_MouseMove"
+                        MouseLeftButtonUp="DragHandle_MouseLeftButtonUp">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock Text="Tutorial"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="Перетащите это окно, чтобы не перекрывать обзор"
+                                   Foreground="#475569"
+                                   Margin="12,0,0,0"
+                                   VerticalAlignment="Center"/>
+                    </DockPanel>
+                </Border>
+
+                <Grid Grid.Row="1" Margin="16,14,16,8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="{Binding TutorialStepProgressText}"
+                               FontWeight="SemiBold"
+                               Foreground="#475569"/>
+
+                    <TextBlock Grid.Row="1"
+                               Text="{Binding CurrentTutorialStepTitle}"
+                               FontSize="21"
+                               FontWeight="Bold"
+                               Margin="0,8,0,0"
+                               TextWrapping="Wrap"/>
+
+                    <TextBlock Grid.Row="2"
+                               Text="{Binding CurrentTutorialStepDescription}"
+                               Margin="0,12,0,0"
+                               TextWrapping="Wrap"/>
+                </Grid>
+
+                <StackPanel Grid.Row="2"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Margin="16,0,16,14">
+                    <Button Content="Назад"
+                            Command="{Binding PreviousTutorialStepCommand}"
+                            IsEnabled="{Binding CanGoToPreviousTutorialStep}"
+                            Width="100"/>
+                    <Button Content="{Binding TutorialNextButtonText}"
+                            Command="{Binding NextTutorialStepCommand}"
+                            Width="100"
+                            Margin="10,0,0,0"/>
+                    <Button Content="Выход"
+                            Command="{Binding ExitTutorialCommand}"
+                            Width="100"
+                            Margin="10,0,0,0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

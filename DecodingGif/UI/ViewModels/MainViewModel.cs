@@ -13,6 +13,7 @@ using DecodingGif.Core.Editing;
 using DecodingGif.Core.Models;
 using DecodingGif.Core.Parsing;
 using DecodingGif.Core.Services;
+using DecodingGif.UI.Tutorial;
 using DecodingGif.UI.UndoRedo;
 using DecodingGif.UI.UndoRedo.Commands;
 using Win32OpenFileDialog = Microsoft.Win32.OpenFileDialog;
@@ -23,6 +24,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 {
     private const int MaxLzwVisualizationBytes = 2_000_000;
     private const int LargeFramePixelThreshold = 4_000_000;
+    private const int LzwTabIndex = 3;
+    private const int PaletteTabIndex = 5;
 
     private readonly FileLoader _fileLoader = new();
     private readonly GifParser _parser = new();
@@ -58,7 +61,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly RelayCommand _redoRelayCommand;
     private readonly RelayCommand _saveChangesRelayCommand;
     private readonly RelayCommand _resetChangesRelayCommand;
+    private readonly RelayCommand _startTutorialRelayCommand;
+    private readonly RelayCommand _nextTutorialStepRelayCommand;
+    private readonly RelayCommand _previousTutorialStepRelayCommand;
+    private readonly RelayCommand _exitTutorialRelayCommand;
     private readonly UndoRedoManager _undoRedoManager = new(10);
+    private readonly TutorialEngine _tutorialEngine = new();
     private readonly PaletteEditorViewModel _paletteEditor = new();
     private readonly AnimationPropertiesEditorViewModel _animationPropertiesEditor = new();
     private readonly FrameEditorViewModel _frameEditor = new();
@@ -906,6 +914,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set => LzwPlaybackDelayMs = value;
     }
 
+    private bool _showOnlyNewLzwCodes = true;
+    public bool ShowOnlyNewLzwCodes
+    {
+        get => _showOnlyNewLzwCodes;
+        set
+        {
+            if (_showOnlyNewLzwCodes == value)
+                return;
+            _showOnlyNewLzwCodes = value;
+            OnPropertyChanged();
+        }
+    }
+
     public byte[] LZWCompressedData
     {
         get => _lzwCompressedFrameData;
@@ -949,6 +970,71 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string RedoDescription => _undoRedoManager.RedoDescription is null ? "Redo" : $"Redo {_undoRedoManager.RedoDescription}";
     public string? LastCommandDescription => _undoRedoManager.LastCommandDescription;
 
+    private int _selectedTabIndex;
+    public int SelectedTabIndex
+    {
+        get => _selectedTabIndex;
+        set
+        {
+            if (_selectedTabIndex == value)
+                return;
+            _selectedTabIndex = Math.Max(0, value);
+            OnPropertyChanged();
+        }
+    }
+
+    public ObservableCollection<TutorialScenario> TutorialScenarios { get; }
+
+    private string _selectedTutorialScenarioId = "fundamentals";
+    public string SelectedTutorialScenarioId
+    {
+        get => _selectedTutorialScenarioId;
+        set
+        {
+            string normalized = string.IsNullOrWhiteSpace(value) ? "fundamentals" : value;
+            if (_selectedTutorialScenarioId == normalized)
+                return;
+            _selectedTutorialScenarioId = normalized;
+            OnPropertyChanged();
+        }
+    }
+
+    private bool _isTutorialActive;
+    public bool IsTutorialActive
+    {
+        get => _isTutorialActive;
+        private set
+        {
+            if (_isTutorialActive == value)
+                return;
+            _isTutorialActive = value;
+            OnPropertyChanged();
+            _startTutorialRelayCommand.RaiseCanExecuteChanged();
+            _nextTutorialStepRelayCommand.RaiseCanExecuteChanged();
+            _previousTutorialStepRelayCommand.RaiseCanExecuteChanged();
+            _exitTutorialRelayCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    public string CurrentTutorialStepTitle => _tutorialEngine.CurrentStep?.Title ?? string.Empty;
+    public string CurrentTutorialStepDescription => _tutorialEngine.CurrentStep?.Description ?? string.Empty;
+    public string TutorialStepProgressText
+    {
+        get
+        {
+            if (!_tutorialEngine.IsRunning || _tutorialEngine.CurrentScenario is null)
+                return string.Empty;
+            return $"{_tutorialEngine.CurrentScenario.Name}  |  Шаг {_tutorialEngine.CurrentStepIndex + 1}/{_tutorialEngine.TotalSteps}";
+        }
+    }
+
+    public string TutorialNextButtonText =>
+        _tutorialEngine.IsRunning && _tutorialEngine.CurrentScenario is not null && _tutorialEngine.CurrentStepIndex >= _tutorialEngine.CurrentScenario.Steps.Count - 1
+            ? "Завершить"
+            : "Далее";
+
+    public bool CanGoToPreviousTutorialStep => _tutorialEngine.IsRunning && _tutorialEngine.CurrentStepIndex > 0;
+
     public ICommand OpenFileCommand { get; }
     public ICommand PrevFrameCommand { get; }
     public ICommand NextFrameCommand { get; }
@@ -980,9 +1066,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand LZWPlayCommand { get; }
     public ICommand LZWPauseCommand { get; }
     public ICommand LZWResetCommand { get; }
+    public ICommand StartTutorialCommand { get; }
+    public ICommand NextTutorialStepCommand { get; }
+    public ICommand PreviousTutorialStepCommand { get; }
+    public ICommand ExitTutorialCommand { get; }
+    public event Action<TutorialDetachedWindowTarget>? TutorialDetachedWindowRequested;
 
     public MainViewModel()
     {
+        TutorialScenarios = new ObservableCollection<TutorialScenario>(_tutorialEngine.Scenarios);
+
         _playbackTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(100)
@@ -1017,6 +1110,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _lzwPauseRelayCommand = new RelayCommand(PauseLzwPlayback, CanLzwPause);
         _lzwStepForwardRelayCommand = new RelayCommand(LzwStepForward, CanLzwStepForward);
         _lzwStepToEndRelayCommand = new RelayCommand(LzwStepToEnd, CanLzwStepToEnd);
+        _startTutorialRelayCommand = new RelayCommand(StartTutorial, CanStartTutorial);
+        _nextTutorialStepRelayCommand = new RelayCommand(NextTutorialStep, CanNextTutorialStep);
+        _previousTutorialStepRelayCommand = new RelayCommand(PreviousTutorialStep, CanPreviousTutorialStep);
+        _exitTutorialRelayCommand = new RelayCommand(ExitTutorial, () => IsTutorialActive);
 
         PrevFrameCommand = _prevFrameRelayCommand;
         NextFrameCommand = _nextFrameRelayCommand;
@@ -1049,6 +1146,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         LZWPlayCommand = _lzwPlayRelayCommand;
         LZWPauseCommand = _lzwPauseRelayCommand;
         LZWResetCommand = _lzwResetRelayCommand;
+        StartTutorialCommand = _startTutorialRelayCommand;
+        NextTutorialStepCommand = _nextTutorialStepRelayCommand;
+        PreviousTutorialStepCommand = _previousTutorialStepRelayCommand;
+        ExitTutorialCommand = _exitTutorialRelayCommand;
         _paletteEditor.ColorChanged += OnPaletteColorChanged;
         _paletteEditor.BatchOperationRequested += OnPaletteBatchOperationRequested;
         _animationPropertiesEditor.SettingsApplied += OnAnimationPropertiesApplied;
@@ -1266,6 +1367,184 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SetHoveredByteOffset(range.Start);
         SelectByte(range.Start);
     }
+
+    private bool CanStartTutorial() => !IsTutorialActive && TutorialScenarios.Count > 0;
+
+    private bool CanNextTutorialStep() => IsTutorialActive;
+
+    private bool CanPreviousTutorialStep() => IsTutorialActive && _tutorialEngine.CurrentStepIndex > 0;
+
+    private void StartTutorial()
+    {
+        string scenarioId = string.IsNullOrWhiteSpace(SelectedTutorialScenarioId)
+            ? "fundamentals"
+            : SelectedTutorialScenarioId;
+
+        if (!_tutorialEngine.Start(scenarioId))
+            return;
+
+        IsTutorialActive = true;
+        ApplyCurrentTutorialStep();
+        RaiseTutorialStateChanged();
+    }
+
+    private void NextTutorialStep()
+    {
+        if (!IsTutorialActive)
+            return;
+
+        if (_tutorialEngine.MoveNext())
+        {
+            ApplyCurrentTutorialStep();
+            RaiseTutorialStateChanged();
+            return;
+        }
+
+        ExitTutorial();
+    }
+
+    private void PreviousTutorialStep()
+    {
+        if (!IsTutorialActive || !_tutorialEngine.MovePrevious())
+            return;
+
+        ApplyCurrentTutorialStep();
+        RaiseTutorialStateChanged();
+    }
+
+    private void ExitTutorial()
+    {
+        if (!IsTutorialActive)
+            return;
+
+        _tutorialEngine.Exit();
+        IsTutorialActive = false;
+        RaiseTutorialStateChanged();
+    }
+
+    private void RaiseTutorialStateChanged()
+    {
+        OnPropertyChanged(nameof(CurrentTutorialStepTitle));
+        OnPropertyChanged(nameof(CurrentTutorialStepDescription));
+        OnPropertyChanged(nameof(TutorialStepProgressText));
+        OnPropertyChanged(nameof(TutorialNextButtonText));
+        OnPropertyChanged(nameof(CanGoToPreviousTutorialStep));
+        _startTutorialRelayCommand.RaiseCanExecuteChanged();
+        _nextTutorialStepRelayCommand.RaiseCanExecuteChanged();
+        _previousTutorialStepRelayCommand.RaiseCanExecuteChanged();
+        _exitTutorialRelayCommand.RaiseCanExecuteChanged();
+    }
+
+    private void ApplyCurrentTutorialStep()
+    {
+        var step = _tutorialEngine.CurrentStep;
+        if (step is null)
+            return;
+
+        if (step.TabToShow.HasValue)
+            SelectedTabIndex = Math.Max(0, step.TabToShow.Value);
+
+        var highlight = ResolveTutorialHighlightRange(step);
+        if (highlight is not null)
+            NavigateToByteRange(highlight);
+
+        foreach (var action in step.Actions)
+            ExecuteTutorialAction(action);
+    }
+
+    private GifByteRange? ResolveTutorialHighlightRange(TutorialStep step)
+    {
+        var file = CurrentFile;
+        if (file is null)
+            return null;
+
+        if (step.HighlightRange is not null)
+        {
+            bool inBounds = step.HighlightRange.Start >= 0 && step.HighlightRange.EndExclusive <= file.Bytes.Length;
+            if (inBounds)
+                return step.HighlightRange;
+        }
+
+        return null;
+    }
+
+    private void ExecuteTutorialAction(TutorialActionType action)
+    {
+        switch (action)
+        {
+            case TutorialActionType.EnsureFileLoadedHint:
+                if (CurrentFile is null)
+                    ErrorText = "Подсказка tutorial-режима: сначала откройте GIF, чтобы включить подсветку и навигацию по шагам.";
+                break;
+            case TutorialActionType.SelectFirstFrame:
+                if (FrameCount > 0)
+                    SetSelectedFrameIndex(0);
+                break;
+            case TutorialActionType.NavigateToGlobalColorTable:
+                {
+                    var gct = Blocks.FirstOrDefault(b => b.Kind == GifBlockKind.GlobalColorTable);
+                    if (gct is not null)
+                        NavigateToByteRange(gct);
+                    break;
+                }
+            case TutorialActionType.NavigateToFirstGraphicControlExtension:
+                {
+                    var gce = Blocks.FirstOrDefault(b => b.Kind == GifBlockKind.GraphicControlExtension);
+                    if (gce is not null)
+                        NavigateToByteRange(gce);
+                    break;
+                }
+            case TutorialActionType.NavigateToFirstLocalColorTable:
+                {
+                    var lct = Blocks.FirstOrDefault(b => b.Kind == GifBlockKind.LocalColorTable);
+                    if (lct is not null)
+                        NavigateToByteRange(lct);
+                    break;
+                }
+            case TutorialActionType.NavigateToFirstImageData:
+                {
+                    var imageData = Blocks.FirstOrDefault(b => b.Kind == GifBlockKind.ImageData);
+                    if (imageData is not null)
+                        NavigateToByteRange(imageData);
+                    break;
+                }
+            case TutorialActionType.SwitchPaletteToGlobalMode:
+                SelectedTabIndex = PaletteTabIndex;
+                _paletteEditor.ColorEditor.CurrentMode = PaletteEditMode.GlobalColorTable;
+                break;
+            case TutorialActionType.SwitchPaletteToLocalMode:
+                SelectedTabIndex = PaletteTabIndex;
+                _paletteEditor.ColorEditor.CurrentMode = PaletteEditMode.LocalColorTable;
+                break;
+            case TutorialActionType.StartLzwVisualization:
+                RequestTutorialDetachedWindow(TutorialDetachedWindowTarget.Lzw);
+                SelectedTabIndex = LzwTabIndex;
+                if (CanStartLzwVisualization())
+                    StartLzwVisualization();
+                break;
+            case TutorialActionType.AdvanceLzwStep:
+                RequestTutorialDetachedWindow(TutorialDetachedWindowTarget.Lzw);
+                SelectedTabIndex = LzwTabIndex;
+                if (IsLZWVisualizationActive)
+                    TryAdvanceLzwStep();
+                break;
+            case TutorialActionType.CompleteLzwDecompression:
+                RequestTutorialDetachedWindow(TutorialDetachedWindowTarget.Lzw);
+                SelectedTabIndex = LzwTabIndex;
+                if (IsLZWVisualizationActive)
+                {
+                    if (LzwPlaybackDelayMs > 100)
+                        LzwPlaybackDelayMs = 100;
+                    StartLzwPlayback();
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void RequestTutorialDetachedWindow(TutorialDetachedWindowTarget target) =>
+        TutorialDetachedWindowRequested?.Invoke(target);
 
     private void ResetGraphLayout()
     {
@@ -1917,17 +2196,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private static LZWDecompressionState CreateInitialLzwState()
     {
+        const int clearCode = 4;
+        const int endOfInfoCode = 5;
+        const int initialDictionarySize = 4;
         var state = new LZWDecompressionState(
             codeSize: 3,
-            clearCode: 4,
-            endOfInfoCode: 5,
+            clearCode: clearCode,
+            endOfInfoCode: endOfInfoCode,
             nextAvailableCode: 6,
+            initialDictionarySize: initialDictionarySize,
             bitPosition: 0,
             step: 0,
             stepDescription: "LZW visualization initialized.",
             currentAction: LZWAction.Initialize);
 
-        for (int code = 0; code <= byte.MaxValue; code++)
+        for (int code = 0; code < initialDictionarySize; code++)
         {
             state.CodeTable[code] = [unchecked((byte)code)];
         }

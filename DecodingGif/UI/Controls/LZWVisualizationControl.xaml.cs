@@ -96,6 +96,19 @@ public partial class LZWVisualizationControl : WpfUserControl
         set => SetValue(ErrorMessageProperty, value);
     }
 
+    public static readonly DependencyProperty ShowOnlyDynamicCodesProperty =
+        DependencyProperty.Register(
+            nameof(ShowOnlyDynamicCodes),
+            typeof(bool),
+            typeof(LZWVisualizationControl),
+            new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public bool ShowOnlyDynamicCodes
+    {
+        get => (bool)GetValue(ShowOnlyDynamicCodesProperty);
+        set => SetValue(ShowOnlyDynamicCodesProperty, value);
+    }
+
     public LZWVisualizationControl()
     {
         InitializeComponent();
@@ -205,7 +218,7 @@ public partial class LZWVisualizationControl : WpfUserControl
         var p = e.GetPosition(this);
         if (_codeTableArea.Contains(p))
         {
-            int count = DecompressionState?.CodeTable.Count ?? 0;
+            int count = GetVisibleCodeKeys().Count;
             double maxOffset = Math.Max(0, count * CodeTableRowHeight - _codeTableArea.Height);
             if (maxOffset <= 0)
             {
@@ -276,7 +289,7 @@ public partial class LZWVisualizationControl : WpfUserControl
             return;
         }
 
-        var keys = DecompressionState.CodeTable.Keys.OrderBy(k => k).ToList();
+        var keys = GetVisibleCodeKeys();
         if (keys.Count == 0)
         {
             return;
@@ -304,6 +317,17 @@ public partial class LZWVisualizationControl : WpfUserControl
         if (DecompressionState.CodeTable.TryGetValue(code, out var bytes))
         {
             ToolTip = BuildEntryTooltip(code, bytes);
+            return;
+        }
+
+        if (DecompressionState is not null)
+        {
+            if (code == DecompressionState.ClearCode)
+                ToolTip = $"Code: {code}\nType: CLEAR\nResets dictionary to initial state.";
+            else if (code == DecompressionState.EndOfInfoCode)
+                ToolTip = $"Code: {code}\nType: EOI\nMarks end of compressed image data.";
+            else
+                ToolTip = null;
         }
     }
 
@@ -379,13 +403,20 @@ public partial class LZWVisualizationControl : WpfUserControl
             return;
         }
 
-        DrawText(drawingContext, "Code Table", area.X + 10, area.Y + 8, 12, WpfBrushes.SlateGray, FontWeights.SemiBold);
+        string header = ShowOnlyDynamicCodes ? "Code Table (new only)" : "Code Table";
+        DrawText(drawingContext, header, area.X + 10, area.Y + 8, 12, WpfBrushes.SlateGray, FontWeights.SemiBold);
 
         const double headerHeight = 26;
         var rowsArea = new Rect(area.X + 6, area.Y + headerHeight, area.Width - 12, Math.Max(0, area.Height - headerHeight - 6));
 
-        var keys = DecompressionState.CodeTable.Keys.OrderBy(k => k).ToList();
+        var keys = GetVisibleCodeKeys();
         int count = keys.Count;
+        if (count == 0)
+        {
+            DrawText(drawingContext, "No dynamic entries yet.", rowsArea.X + 6, rowsArea.Y + 3, 11, WpfBrushes.Gray, FontWeights.Normal);
+            return;
+        }
+
         double totalHeight = count * CodeTableRowHeight;
         double maxOffset = Math.Max(0, totalHeight - rowsArea.Height);
         _codeMaxOffset = maxOffset;
@@ -397,25 +428,32 @@ public partial class LZWVisualizationControl : WpfUserControl
 
         drawingContext.PushClip(new RectangleGeometry(rowsArea));
 
-        int firstDynamicCode = DecompressionState.EndOfInfoCode + 1;
+        int firstDynamicCode = Math.Max(0, DecompressionState.InitialDictionarySize);
         int latestAddedCode = DecompressionState.NextAvailableCode - 1;
+        int clearCode = DecompressionState.ClearCode;
+        int endCode = DecompressionState.EndOfInfoCode;
 
         for (int i = startIndex; i <= endIndex; i++)
         {
             int code = keys[i];
             double y = rowsArea.Y + (i * CodeTableRowHeight) - _codeTableScrollOffset;
             var rowRect = new Rect(rowsArea.X, y, rowsArea.Width - 8, CodeTableRowHeight - 1);
+            bool isServiceCode = code == clearCode || code == endCode;
 
             WpfBrush rowBrush = i % 2 == 0
                 ? new SolidColorBrush(WpfColor.FromArgb(35, 148, 163, 184))
                 : new SolidColorBrush(WpfColor.FromArgb(20, 148, 163, 184));
 
-            if (code >= firstDynamicCode)
+            if (isServiceCode)
+            {
+                rowBrush = new SolidColorBrush(WpfColor.FromArgb(125, 203, 213, 225));
+            }
+            else if (code >= firstDynamicCode)
             {
                 rowBrush = new SolidColorBrush(WpfColor.FromArgb(95, 187, 247, 208));
             }
 
-            if (code == latestAddedCode && latestAddedCode >= firstDynamicCode)
+            if (!isServiceCode && code == latestAddedCode && latestAddedCode >= firstDynamicCode)
             {
                 byte alpha = (byte)(120 + (GetPulse01() * 90));
                 rowBrush = new SolidColorBrush(WpfColor.FromArgb(alpha, 251, 191, 36));
@@ -430,6 +468,20 @@ public partial class LZWVisualizationControl : WpfUserControl
 
             if (!DecompressionState.CodeTable.TryGetValue(code, out var bytes))
             {
+                string serviceLabel = code == clearCode
+                    ? $"{code,4} -> [CLEAR]"
+                    : code == endCode
+                        ? $"{code,4} -> [EOI]"
+                        : $"{code,4} -> [N/A]";
+
+                DrawText(
+                    drawingContext,
+                    serviceLabel,
+                    rowRect.X + 6,
+                    rowRect.Y + 3,
+                    11,
+                    WpfBrushes.Black,
+                    FontWeights.SemiBold);
                 continue;
             }
 
@@ -860,6 +912,27 @@ public partial class LZWVisualizationControl : WpfUserControl
         string hex = string.Join(" ", bytes.Select(b => b.ToString("X2")));
         string ascii = new string(bytes.Select(b => b is >= 32 and <= 126 ? (char)b : '.').ToArray());
         return $"Code: {code}\nLength: {bytes.Count}\nHex: {hex}\nASCII: {ascii}";
+    }
+
+    private List<int> GetVisibleCodeKeys()
+    {
+        if (DecompressionState is null || DecompressionState.CodeTable.Count == 0)
+            return [];
+
+        IEnumerable<int> keys = DecompressionState.CodeTable.Keys;
+        var list = keys.ToList();
+        if (!list.Contains(DecompressionState.ClearCode))
+            list.Add(DecompressionState.ClearCode);
+        if (!list.Contains(DecompressionState.EndOfInfoCode))
+            list.Add(DecompressionState.EndOfInfoCode);
+
+        if (ShowOnlyDynamicCodes)
+        {
+            int firstDynamicCode = Math.Max(0, DecompressionState.InitialDictionarySize);
+            list = list.Where(k => k >= firstDynamicCode || k == DecompressionState.ClearCode || k == DecompressionState.EndOfInfoCode).ToList();
+        }
+
+        return list.OrderBy(k => k).ToList();
     }
 
     private static int InferMinCodeSize(int clearCode)

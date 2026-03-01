@@ -46,6 +46,14 @@
     <DockPanel Margin="12">
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
             <Button Content="Open GIF" Command="{Binding OpenFileCommand}" Height="32" Width="120"/>
+            <ComboBox ItemsSource="{Binding TutorialScenarios}"
+                      SelectedValuePath="Id"
+                      DisplayMemberPath="Name"
+                      SelectedValue="{Binding SelectedTutorialScenarioId, Mode=TwoWay}"
+                      Height="32"
+                      Width="210"
+                      Margin="8,0,0,0"/>
+            <Button Content="Запустить tutorial" Command="{Binding StartTutorialCommand}" Height="32" Width="150" Margin="8,0,0,0"/>
             <Button Content="{Binding UndoDescription}" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}" Height="32" Margin="8,0,0,0" MinWidth="120"/>
             <Button Content="{Binding RedoDescription}" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo}" Height="32" Margin="8,0,0,0" MinWidth="120"/>
             <Button Content="Save Changes" Command="{Binding SaveChangesCommand}" IsEnabled="{Binding HasUnsavedChanges}" Height="32" Margin="8,0,0,0" MinWidth="120"/>
@@ -284,7 +292,7 @@
 
                 <TextBlock Text="Structure:" FontWeight="Bold" Margin="0,14,0,6"/>
 
-                <TabControl Height="380">
+                <TabControl Height="380" SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}">
                     <TabItem Header="Tree View">
                         <TreeView x:Name="StructureTree"
                                   ItemsSource="{Binding StructureRoots}"
@@ -433,6 +441,10 @@
                                         <TextBlock Text="{Binding LZWAnimationSpeed, StringFormat={}{0} ms}"
                                                    Margin="8,0,0,0"
                                                    VerticalAlignment="Center"/>
+                                        <CheckBox Content="Показывать только новые коды"
+                                                  IsChecked="{Binding ShowOnlyNewLzwCodes}"
+                                                  Margin="14,0,0,0"
+                                                  VerticalAlignment="Center"/>
                                     </WrapPanel>
                                 </StackPanel>
                             </GroupBox>
@@ -441,6 +453,7 @@
                                 <ctrl:LZWVisualizationControl DecompressionState="{Binding LZWState}"
                                                               CompressedData="{Binding LZWCompressedData}"
                                                               IsVisualizationActive="{Binding IsLZWVisualizationActive}"
+                                                              ShowOnlyDynamicCodes="{Binding ShowOnlyNewLzwCodes}"
                                                               ErrorMessage="{Binding ErrorText}"/>
                             </Border>
 
@@ -493,6 +506,10 @@
                 </GroupBox>
                 </StackPanel>
             </ScrollViewer>
+
+            <ctrl:TutorialOverlayControl Grid.ColumnSpan="2"
+                                         Panel.ZIndex="1000"
+                                         Visibility="{Binding IsTutorialActive, Converter={StaticResource BoolToVisibilityConverter}}"/>
         </Grid>
     </DockPanel>
 </Window>

@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using DecodingGif.Core.Models;
+using DecodingGif.UI.Tutorial;
 using DecodingGif.UI.ViewModels;
 
 namespace DecodingGif;
@@ -20,6 +21,7 @@ public partial class MainWindow
     private LZWWindow? _lzwWindow;
     private PaletteWindow? _paletteWindow;
     private AnimationPropertiesWindow? _animationPropertiesWindow;
+    private MainViewModel? _subscribedVm;
 
     public MainWindow()
     {
@@ -32,6 +34,31 @@ public partial class MainWindow
             Interval = TimeSpan.FromMilliseconds(33)
         };
         _hoverTimer.Tick += HoverTimer_Tick;
+        DataContextChanged += MainWindow_DataContextChanged;
+        SubscribeToTutorialWindowRequests(DataContext as MainViewModel);
+    }
+
+    private void MainWindow_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e) =>
+        SubscribeToTutorialWindowRequests(e.NewValue as MainViewModel);
+
+    private void SubscribeToTutorialWindowRequests(MainViewModel? vm)
+    {
+        if (_subscribedVm is not null)
+            _subscribedVm.TutorialDetachedWindowRequested -= OnTutorialDetachedWindowRequested;
+
+        _subscribedVm = vm;
+
+        if (_subscribedVm is not null)
+            _subscribedVm.TutorialDetachedWindowRequested += OnTutorialDetachedWindowRequested;
+    }
+
+    private void OnTutorialDetachedWindowRequested(TutorialDetachedWindowTarget target)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        if (target == TutorialDetachedWindowTarget.Lzw)
+            EnsureLzwWindowOpen(vm);
     }
 
     private void StructureTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
@@ -277,6 +304,12 @@ public partial class MainWindow
         if (DataContext is not MainViewModel vm)
             return;
 
+        EnsureLzwWindowOpen(vm);
+        e.Handled = true;
+    }
+
+    private void EnsureLzwWindowOpen(MainViewModel vm)
+    {
         if (_lzwWindow is null)
         {
             _lzwWindow = new LZWWindow
@@ -293,8 +326,6 @@ public partial class MainWindow
                 _lzwWindow.WindowState = WindowState.Normal;
             _lzwWindow.Activate();
         }
-
-        e.Handled = true;
     }
 
     private void PaletteTab_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
