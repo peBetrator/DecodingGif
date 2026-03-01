@@ -12,7 +12,10 @@ using DecodingGif.Core.Models;
 using DecodingGif.Core.Services;
 using DecodingGif.UI.UndoRedo;
 using DecodingGif.UI.UndoRedo.Commands;
+using MediaBrush = System.Windows.Media.Brush;
+using MediaBrushes = System.Windows.Media.Brushes;
 using MediaColor = System.Windows.Media.Color;
+using SolidColorBrush = System.Windows.Media.SolidColorBrush;
 
 namespace DecodingGif.UI.ViewModels;
 
@@ -235,6 +238,19 @@ public sealed class ColorPaletteViewModel : INotifyPropertyChanged
                 return;
             _replaceHexColor = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(ReplaceColorBrush));
+        }
+    }
+
+    public MediaBrush ReplaceColorBrush
+    {
+        get
+        {
+            if (!TryParseHexColor(ReplaceHexColor, out var color))
+                return MediaBrushes.Transparent;
+            var brush = new SolidColorBrush(MediaColor.FromRgb(color.R, color.G, color.B));
+            brush.Freeze();
+            return brush;
         }
     }
 
@@ -244,6 +260,7 @@ public sealed class ColorPaletteViewModel : INotifyPropertyChanged
     public ICommand BatchContrastCommand { get; }
     public ICommand BatchHueCommand { get; }
     public ICommand BatchReplaceCommand { get; }
+    public ICommand PickReplaceColorCommand { get; }
     public ICommand SelectAllCommand { get; }
     public ICommand SelectUnusedCommand { get; }
     public ICommand ClearSelectionCommand { get; }
@@ -261,6 +278,7 @@ public sealed class ColorPaletteViewModel : INotifyPropertyChanged
         BatchContrastCommand = new RelayCommand(ApplyBatchContrast, () => _allColors.Count > 0);
         BatchHueCommand = new RelayCommand(ApplyBatchHue, () => _allColors.Count > 0);
         BatchReplaceCommand = new RelayCommand(ApplyBatchReplace, () => _allColors.Count > 0);
+        PickReplaceColorCommand = new RelayCommand(PickBatchReplaceColor, () => _allColors.Count > 0);
         SelectAllCommand = new RelayCommand(SelectAll, () => _allColors.Count > 0);
         SelectUnusedCommand = new RelayCommand(SelectUnused, () => _allColors.Count > 0);
         ClearSelectionCommand = new RelayCommand(ClearSelection, () => _allColors.Count > 0);
@@ -525,6 +543,25 @@ public sealed class ColorPaletteViewModel : INotifyPropertyChanged
             return;
 
         ExecuteBatchSet(indexes, _ => target, $"Replace selected colors with {ReplaceHexColor}");
+    }
+
+    private void PickBatchReplaceColor()
+    {
+        var initial = TryParseHexColor(ReplaceHexColor, out var parsed)
+            ? System.Drawing.Color.FromArgb(parsed.R, parsed.G, parsed.B)
+            : System.Drawing.Color.White;
+
+        var dialog = new WinForms.ColorDialog
+        {
+            FullOpen = true,
+            Color = initial
+        };
+
+        if (dialog.ShowDialog() != WinForms.DialogResult.OK)
+            return;
+
+        var c = dialog.Color;
+        ReplaceHexColor = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
     }
 
     private void ExecuteBatchSet(IReadOnlyList<int> indexes, Func<ColorRgb, ColorRgb> transform, string description)
@@ -835,6 +872,7 @@ public sealed class ColorPaletteViewModel : INotifyPropertyChanged
     {
         (UndoCommand as RelayCommand)?.RaiseCanExecuteChanged();
         (RedoCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        (PickReplaceColorCommand as RelayCommand)?.RaiseCanExecuteChanged();
         (SaveChangesCommand as RelayCommand)?.RaiseCanExecuteChanged();
         (ResetChangesCommand as RelayCommand)?.RaiseCanExecuteChanged();
         (SwitchToGlobalModeCommand as RelayCommand)?.RaiseCanExecuteChanged();
