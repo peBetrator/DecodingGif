@@ -13,6 +13,7 @@ public sealed class LZWDecompressionState
     public int NextAvailableCode { get; set; }
     public int BitPosition { get; set; }
     public int Step { get; set; }
+    public int InitialDictionarySize { get; set; }
     public string StepDescription { get; set; }
     public LZWAction CurrentAction { get; set; }
     public bool IsComplete { get; set; }
@@ -22,6 +23,7 @@ public sealed class LZWDecompressionState
         int clearCode,
         int endOfInfoCode,
         int nextAvailableCode,
+        int initialDictionarySize,
         int bitPosition = 0,
         int step = 0,
         string? stepDescription = null,
@@ -57,6 +59,11 @@ public sealed class LZWDecompressionState
             throw new ArgumentOutOfRangeException(nameof(step), "Step must be non-negative.");
         }
 
+        if (initialDictionarySize <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(initialDictionarySize), "Initial dictionary size must be positive.");
+        }
+
         CodeTable = new Dictionary<int, List<byte>>();
         OutputBuffer = new List<byte>();
         CurrentCode = -1;
@@ -65,6 +72,7 @@ public sealed class LZWDecompressionState
         ClearCode = clearCode;
         EndOfInfoCode = endOfInfoCode;
         NextAvailableCode = nextAvailableCode;
+        InitialDictionarySize = initialDictionarySize;
         BitPosition = bitPosition;
         Step = step;
         StepDescription = stepDescription ?? string.Empty;

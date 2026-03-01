@@ -30,18 +30,20 @@ public sealed class LZWStepByStepDecompressor
         int clearCode = 1 << lzwMinCodeSize;
         int endOfInfoCode = clearCode + 1;
         int nextAvailableCode = endOfInfoCode + 1;
+        int baseSymbolCount = clearCode;
 
         var state = new LZWDecompressionState(
             codeSize: lzwMinCodeSize + 1,
             clearCode: clearCode,
             endOfInfoCode: endOfInfoCode,
             nextAvailableCode: nextAvailableCode,
+            initialDictionarySize: baseSymbolCount,
             bitPosition: 0,
             step: 0,
             stepDescription: "LZW decompressor initialized.",
             currentAction: LZWAction.Initialize);
 
-        InitializeBaseCodeTable(state.CodeTable);
+        InitializeBaseCodeTable(state.CodeTable, baseSymbolCount);
 
         CurrentState = state;
         StepHistory.Reset();
@@ -351,7 +353,7 @@ public sealed class LZWStepByStepDecompressor
 
     private void ResetToInitialDictionary(LZWDecompressionState state)
     {
-        InitializeBaseCodeTable(state.CodeTable);
+        InitializeBaseCodeTable(state.CodeTable, state.InitialDictionarySize);
 
         state.CodeSize = _lzwMinCodeSize + 1;
         state.NextAvailableCode = state.EndOfInfoCode + 1;
@@ -408,10 +410,12 @@ public sealed class LZWStepByStepDecompressor
         return value;
     }
 
-    private static void InitializeBaseCodeTable(Dictionary<int, List<byte>> codeTable)
+    private static void InitializeBaseCodeTable(Dictionary<int, List<byte>> codeTable, int symbolCount)
     {
         codeTable.Clear();
-        for (int code = 0; code <= byte.MaxValue; code++)
+
+        int safeCount = Math.Clamp(symbolCount, 1, 256);
+        for (int code = 0; code < safeCount; code++)
         {
             codeTable[code] = [unchecked((byte)code)];
         }

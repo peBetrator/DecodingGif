@@ -54,6 +54,7 @@ public sealed class LZWStepHistory
             state.ClearCode,
             state.EndOfInfoCode,
             state.NextAvailableCode,
+            state.InitialDictionarySize,
             state.BitPosition,
             state.Step,
             state.StepDescription,
