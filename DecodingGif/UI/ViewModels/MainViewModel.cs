@@ -41,6 +41,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly StructureDependencyGraphBuilder _graphBuilder = new();
     private readonly MemoryLayoutBuilder _memoryLayoutBuilder = new();
     private readonly PerformanceAnalyzer _performanceAnalyzer = new();
+    private readonly CreatorDetector _creatorDetector = new();
     private readonly GifOptimizationAnalyzer _optimizationAnalyzer = new();
     private readonly LZWStepByStepDecompressor _lzwDecompressor = new();
     private readonly IByteEditPolicy _editPolicy;
@@ -381,6 +382,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private CreatorInfo _creatorInfo = CreatorInfo.Generic("Creator detection has not run yet.");
+    public CreatorInfo CreatorInfo
+    {
+        get => _creatorInfo;
+        private set
+        {
+            _creatorInfo = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CreatorSoftwareText));
+            OnPropertyChanged(nameof(CreatorEraText));
+            OnPropertyChanged(nameof(CreatorConfidenceText));
+            OnPropertyChanged(nameof(CreatorEvidenceText));
+        }
+    }
+
     private int _bytesPerRow = 48;
     public int BytesPerRow
     {
@@ -451,6 +467,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string PerformanceParseComplexityText => $"Parse Complexity: {Blocks.Count:N0} blocks";
     public string PerformanceFrameRateText => $"Frame Rate: {CalculateAverageFrameRate():0.##} fps";
     public string PerformanceDisposalComplexityText => $"Disposal Complexity: {CalculateDisposalComplexityText()}";
+    public string CreatorSoftwareText => $"Creator: {CreatorInfo.SoftwareName}";
+    public string CreatorEraText => $"Estimated Era: {CreatorInfo.EstimatedEra}";
+    public string CreatorConfidenceText => $"Confidence: {CreatorInfo.ConfidencePercent}%";
+    public string CreatorEvidenceText => $"Evidence: {string.Join(" | ", CreatorInfo.KeyEvidence.Take(3))}";
 
     private ObservableCollection<OptimizationSuggestion> _optimizationSuggestions = new();
     public ObservableCollection<OptimizationSuggestion> OptimizationSuggestions
@@ -1689,6 +1709,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (file is null || blocksSnapshot.Count == 0)
         {
             MemoryLayout = new MemoryLayoutVisualization();
+            CreatorInfo = CreatorInfo.Generic("No file or blocks available for fingerprinting.");
             IsMemoryLayoutBuilding = false;
             return;
         }
@@ -1712,6 +1733,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             IsMemoryLayoutBuilding = true;
 
+            var creatorTask = Task.Run(
+                () => _creatorDetector.DetectCreator(file, blocks),
+                cancellationToken);
+
             IReadOnlyDictionary<BlockPerformanceKey, BlockPerformanceMetrics>? performance = null;
             if (file.Bytes.Length <= MaxPerformanceAnalysisFileBytes && blocks.Count <= MaxPerformanceAnalysisBlockCount)
             {
@@ -1728,6 +1753,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 return;
 
             MemoryLayout = layout;
+            CreatorInfo = await creatorTask;
         }
         catch (OperationCanceledException)
         {

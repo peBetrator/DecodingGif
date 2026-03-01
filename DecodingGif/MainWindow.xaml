@@ -410,6 +410,12 @@
                                         <TextBlock Text="{Binding PerformanceFrameRateText}" Margin="8,0"/>
                                         <TextBlock Text="{Binding PerformanceDisposalComplexityText}" Margin="8,0"/>
                                     </WrapPanel>
+                                    <WrapPanel Margin="0,2,0,0">
+                                        <TextBlock Text="{Binding CreatorSoftwareText}" Margin="8,0"/>
+                                        <TextBlock Text="{Binding CreatorEraText}" Margin="8,0"/>
+                                        <TextBlock Text="{Binding CreatorConfidenceText}" Margin="8,0"/>
+                                    </WrapPanel>
+                                    <TextBlock Text="{Binding CreatorEvidenceText}" Margin="8,2,8,0" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </GroupBox>
                         </Grid>
