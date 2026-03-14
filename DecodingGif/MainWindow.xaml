@@ -1,4 +1,4 @@
-﻿<Window x:Class="DecodingGif.MainWindow"
+<Window x:Class="DecodingGif.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -76,8 +76,9 @@
 
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3*"/>
-                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="3*" MinWidth="420"/>
+                <ColumnDefinition Width="6"/>
+                <ColumnDefinition Width="2*" MinWidth="320"/>
             </Grid.ColumnDefinitions>
 
             <Grid Grid.Column="0">
@@ -182,8 +183,16 @@
                 </DataGrid>
             </Grid>
 
-            <!-- RIGHT PANEL -->
-            <ScrollViewer Grid.Column="1" Margin="12,0,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <GridSplitter Grid.Column="1"
+                          Width="6"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          ResizeBehavior="PreviousAndNext"
+                          Background="#CBD5E1"
+                          ShowsPreview="True"/>
+
+            <!-- RIGHT PANEL --> 
+            <ScrollViewer Grid.Column="2" Margin="12,0,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
                 <TextBlock Text="Preview" FontWeight="Bold" Margin="0,0,0,6"/>
                 <Border BorderBrush="LightGray" BorderThickness="1" Padding="4" Margin="0,0,0,12">
@@ -194,12 +203,12 @@
                 <GroupBox Header="Animation Playback" Margin="0,0,0,12">
                     <StackPanel Orientation="Vertical" Margin="5">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5">
-                            <Button Command="{Binding RestartCommand}" Content="⏮" Width="30" Height="30" ToolTip="Restart Animation"/>
-                            <Button Command="{Binding StepBackwardCommand}" Content="⏪" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Step Backward"/>
-                            <Button Command="{Binding PlayCommand}" Content="▶" Width="35" Height="30" Margin="4,0,0,0" ToolTip="Play Animation"/>
-                            <Button Command="{Binding PauseCommand}" Content="⏸" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Pause Animation"/>
-                            <Button Command="{Binding StopCommand}" Content="⏹" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Stop Animation"/>
-                            <Button Command="{Binding StepForwardCommand}" Content="⏩" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Step Forward"/>
+                            <Button Command="{Binding RestartCommand}" Content="?" Width="30" Height="30" ToolTip="Restart Animation"/>
+                            <Button Command="{Binding StepBackwardCommand}" Content="?" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Step Backward"/>
+                            <Button Command="{Binding PlayCommand}" Content="?" Width="35" Height="30" Margin="4,0,0,0" ToolTip="Play Animation"/>
+                            <Button Command="{Binding PauseCommand}" Content="?" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Pause Animation"/>
+                            <Button Command="{Binding StopCommand}" Content="?" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Stop Animation"/>
+                            <Button Command="{Binding StepForwardCommand}" Content="?" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Step Forward"/>
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5">
@@ -469,7 +478,7 @@
                                         <TextBlock Text="{Binding LZWAnimationSpeed, StringFormat={}{0} ms}"
                                                    Margin="8,0,0,0"
                                                    VerticalAlignment="Center"/>
-                                        <CheckBox Content="Показывать только новые коды"
+                                        <CheckBox Content="?????????? ?????? ????? ????"
                                                   IsChecked="{Binding ShowOnlyNewLzwCodes}"
                                                   Margin="14,0,0,0"
                                                   VerticalAlignment="Center"/>

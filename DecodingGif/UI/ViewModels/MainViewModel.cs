@@ -20,6 +20,7 @@ using DecodingGif.UI.Tutorial;
 using DecodingGif.UI.UndoRedo;
 using DecodingGif.UI.UndoRedo.Commands;
 using Win32OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+using Win32SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 
 namespace DecodingGif.UI.ViewModels;
 
@@ -1148,7 +1149,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OpenFileCommand = new RelayCommand(OpenFile);
         _undoRelayCommand = new RelayCommand(UndoLastOperation, () => _undoRedoManager.CanUndo);
         _redoRelayCommand = new RelayCommand(RedoLastOperation, () => _undoRedoManager.CanRedo);
-        _saveChangesRelayCommand = new RelayCommand(SaveChanges, () => CurrentFile is not null && HasUnsavedChanges);
+        _saveChangesRelayCommand = new RelayCommand(() => _ = SaveChanges(), () => CurrentFile is not null && HasUnsavedChanges);
         _resetChangesRelayCommand = new RelayCommand(ResetChangesToOriginal, () => CurrentFile is not null && HasUnsavedChanges);
         _prevFrameRelayCommand = new RelayCommand(SelectPrevFrame, CanStepBackward);
         _nextFrameRelayCommand = new RelayCommand(SelectNextFrame, CanStepForward);
@@ -2249,15 +2250,34 @@ public sealed class MainViewModel : INotifyPropertyChanged
             SelectByte(Math.Clamp(selectedOffset.Value, 0, Math.Max(0, file.Bytes.Length - 1)));
     }
 
-    private void SaveChanges()
+    private bool SaveChanges()
     {
         if (CurrentFile is null)
-            return;
-
+            return false;
+        var saveDialog = new Win32SaveFileDialog
+        {
+            Filter = "GIF images (*.gif)|*.gif|All files (*.*)|*.*",
+            Title = "Save GIF As",
+            FileName = Path.GetFileName(CurrentFile.FilePath),
+            InitialDirectory = GetInitialSaveDirectory(CurrentFile.FilePath),
+            OverwritePrompt = true
+        };
+        if (saveDialog.ShowDialog() != true)
+            return false;
+        string savePath = Path.GetFullPath(saveDialog.FileName);
+        File.WriteAllBytes(savePath, CurrentFile.Bytes);
+        CurrentFile = CurrentFile with
+        {
+            FilePath = savePath,
+            Bytes = (byte[])CurrentFile.Bytes.Clone()
+        };
+        _originalBytes = (byte[])CurrentFile.Bytes.Clone();
         _savedBytes = (byte[])CurrentFile.Bytes.Clone();
         _paletteEditor.SaveChanges();
         HasUnsavedChanges = false;
+        ErrorText = null;
         RaiseSaveStateChanged();
+        return true;
     }
 
     private void ResetChangesToOriginal()
@@ -2293,9 +2313,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return false;
 
         if (result == WinForms.DialogResult.Yes)
-            SaveChanges();
-
+            return SaveChanges();
         return true;
+    }
+
+    private static string GetInitialSaveDirectory(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+            return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        string? directory = Path.GetDirectoryName(filePath);
+        return string.IsNullOrWhiteSpace(directory)
+            ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+            : directory;
     }
 
     private void MarkUnsavedChanges()
