@@ -51,6 +51,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private CancellationTokenSource? _memoryLayoutCts;
     private int _memoryLayoutBuildGeneration;
     private bool _isMemoryLayoutBuilding;
+    private string? _forensicCacheKey;
+    private ForensicAnalysisResult? _cachedForensicAnalysis;
 
     private readonly RelayCommand _prevFrameRelayCommand;
     private readonly RelayCommand _nextFrameRelayCommand;
@@ -139,6 +141,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set
         {
             _currentFile = value;
+            if (value is null)
+            {
+                _forensicCacheKey = null;
+                _cachedForensicAnalysis = null;
+            }
             OnPropertyChanged();
             OnPropertyChanged(nameof(StatusText));
             OnPropertyChanged(nameof(FileLength));
@@ -155,6 +162,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set
         {
             _blocks = value;
+            _forensicCacheKey = null;
+            _cachedForensicAnalysis = null;
             OnPropertyChanged();
             RaiseMemoryLayoutStatsChanged();
         }
@@ -383,6 +392,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private ForensicAnalysisResult _creatorAnalysis = ForensicAnalysisResult.Empty("Форензический анализ ещё не запускался.");
+    public ForensicAnalysisResult CreatorAnalysis
+    {
+        get => _creatorAnalysis;
+        private set
+        {
+            _creatorAnalysis = value;
+            _creatorInfo = value.PrimaryCreator;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CreatorInfo));
+            OnPropertyChanged(nameof(ForensicQuickSummaryText));
+            OnPropertyChanged(nameof(ForensicAlternativesVisibility));
+            OnPropertyChanged(nameof(CreatorSoftwareText));
+            OnPropertyChanged(nameof(CreatorEraText));
+            OnPropertyChanged(nameof(CreatorConfidenceText));
+            OnPropertyChanged(nameof(CreatorEvidenceText));
+        }
+    }
+
     private CreatorInfo _creatorInfo = CreatorInfo.Generic("Creator detection has not run yet.");
     public CreatorInfo CreatorInfo
     {
@@ -391,6 +419,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             _creatorInfo = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(CreatorAnalysis));
             OnPropertyChanged(nameof(CreatorSoftwareText));
             OnPropertyChanged(nameof(CreatorEraText));
             OnPropertyChanged(nameof(CreatorConfidenceText));
@@ -468,10 +497,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string PerformanceParseComplexityText => $"Parse Complexity: {Blocks.Count:N0} blocks";
     public string PerformanceFrameRateText => $"Frame Rate: {CalculateAverageFrameRate():0.##} fps";
     public string PerformanceDisposalComplexityText => $"Disposal Complexity: {CalculateDisposalComplexityText()}";
-    public string CreatorSoftwareText => $"Creator: {CreatorInfo.SoftwareName}";
-    public string CreatorEraText => $"Estimated Era: {CreatorInfo.EstimatedEra}";
-    public string CreatorConfidenceText => $"Confidence: {CreatorInfo.ConfidencePercent}%";
-    public string CreatorEvidenceText => $"Evidence: {string.Join(" | ", CreatorInfo.KeyEvidence.Take(3))}";
+    public string CreatorSoftwareText => $"Источник: {CreatorAnalysis.PrimaryCreator.SoftwareName}";
+    public string CreatorEraText => $"Эпоха: {CreatorAnalysis.PrimaryCreator.EstimatedEra}";
+    public string CreatorConfidenceText => $"Уверенность: {CreatorAnalysis.PrimaryCreator.ConfidencePercent}%";
+    public string CreatorEvidenceText => $"Следы: {string.Join(" | ", CreatorAnalysis.PrimaryCreator.KeyEvidence.Take(3))}";
+    public string ForensicQuickSummaryText => CreatorAnalysis.QuickSummary;
+    public System.Windows.Visibility ForensicAlternativesVisibility =>
+        CreatorAnalysis.OverallConfidence < 80 && CreatorAnalysis.AlternativeCandidates.Count > 0
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
 
     private ObservableCollection<OptimizationSuggestion> _optimizationSuggestions = new();
     public ObservableCollection<OptimizationSuggestion> OptimizationSuggestions
@@ -1293,7 +1327,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _fullStructureGraph = _graphBuilder.BuildGraph(CurrentFile, ranges, GraphLayoutMode);
             ApplyGraphFilters();
             RebuildMemoryLayout();
-            var optimizationReport = _optimizationAnalyzer.AnalyzeFile(CurrentFile, ranges);
+            var optimizationReport = _optimizationAnalyzer.AnalyzeFile(CurrentFile, ranges, _cachedForensicAnalysis);
             OptimizationSuggestions = new ObservableCollection<OptimizationSuggestion>(optimizationReport.Suggestions);
             OnPropertyChanged(nameof(TotalAnimationText));
             _selectedFrameIndex = 0;
@@ -1328,6 +1362,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _fullStructureGraph = new StructureDependencyGraph();
             StructureGraph = new StructureDependencyGraph();
             MemoryLayout = new MemoryLayoutVisualization();
+            CreatorAnalysis = ForensicAnalysisResult.Empty("Форензический анализ недоступен: файл не загружен.");
             OptimizationSuggestions = new ObservableCollection<OptimizationSuggestion>();
             IsPlaying = false;
             _playbackTimer.Stop();
@@ -1710,7 +1745,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (file is null || blocksSnapshot.Count == 0)
         {
             MemoryLayout = new MemoryLayoutVisualization();
-            CreatorInfo = CreatorInfo.Generic("No file or blocks available for fingerprinting.");
+            CreatorAnalysis = ForensicAnalysisResult.Empty("Нет файла или структурных блоков для форензического профилирования.");
             IsMemoryLayoutBuilding = false;
             return;
         }
@@ -1734,10 +1769,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             IsMemoryLayoutBuilding = true;
 
-            var creatorTask = Task.Run(
-                () => _creatorDetector.DetectCreator(file, blocks),
-                cancellationToken);
-
             IReadOnlyDictionary<BlockPerformanceKey, BlockPerformanceMetrics>? performance = null;
             if (file.Bytes.Length <= MaxPerformanceAnalysisFileBytes && blocks.Count <= MaxPerformanceAnalysisBlockCount)
             {
@@ -1746,15 +1777,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     cancellationToken);
             }
 
+            ForensicAnalysisResult forensic = await GetOrCreateForensicAnalysisAsync(file, blocks, cancellationToken);
+
             var layout = await Task.Run(
                 () => _memoryLayoutBuilder.BuildLayout(file, blocks, bytesPerRow, showEmptySpace, compressLargeBlocks, performance),
+                cancellationToken);
+
+            var optimizationReport = await Task.Run(
+                () => _optimizationAnalyzer.AnalyzeFile(file, blocks, forensic),
                 cancellationToken);
 
             if (cancellationToken.IsCancellationRequested || generation != _memoryLayoutBuildGeneration)
                 return;
 
             MemoryLayout = layout;
-            CreatorInfo = await creatorTask;
+            CreatorAnalysis = forensic;
+            OptimizationSuggestions = new ObservableCollection<OptimizationSuggestion>(optimizationReport.Suggestions);
         }
         catch (OperationCanceledException)
         {
@@ -1764,6 +1802,47 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (generation == _memoryLayoutBuildGeneration)
                 IsMemoryLayoutBuilding = false;
         }
+    }
+
+    private async Task<ForensicAnalysisResult> GetOrCreateForensicAnalysisAsync(
+        GifFile file,
+        IReadOnlyList<GifByteRange> blocks,
+        CancellationToken cancellationToken)
+    {
+        string cacheKey = BuildForensicCacheKey(file, blocks);
+        if (_cachedForensicAnalysis is not null && string.Equals(_forensicCacheKey, cacheKey, StringComparison.Ordinal))
+            return _cachedForensicAnalysis;
+
+        var forensic = await _creatorDetector.AnalyzeForensicsAsync(file, blocks, cancellationToken);
+        if (!cancellationToken.IsCancellationRequested)
+        {
+            _forensicCacheKey = cacheKey;
+            _cachedForensicAnalysis = forensic;
+        }
+
+        return forensic;
+    }
+
+    private static string BuildForensicCacheKey(GifFile file, IReadOnlyList<GifByteRange> blocks)
+    {
+        var hash = new HashCode();
+        hash.Add(file.Bytes.Length);
+        hash.Add(blocks.Count);
+
+        for (int i = 0; i < Math.Min(file.Bytes.Length, 32); i++)
+            hash.Add(file.Bytes[i]);
+
+        for (int i = Math.Max(0, file.Bytes.Length - 32); i < file.Bytes.Length; i++)
+            hash.Add(file.Bytes[i]);
+
+        foreach (var block in blocks.Take(12))
+        {
+            hash.Add(block.Kind);
+            hash.Add(block.Start);
+            hash.Add(block.Length);
+        }
+
+        return hash.ToHashCode().ToString("X8");
     }
 
     private double CalculateDataUtilization()
@@ -2244,7 +2323,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var refreshedBlocks = _structure.BuildRanges(file).ToList();
         Blocks = new ObservableCollection<GifByteRange>(refreshedBlocks);
         FrameTimeline = _animation.BuildFrameTimeline(file, refreshedBlocks);
-        OptimizationSuggestions = new ObservableCollection<OptimizationSuggestion>(_optimizationAnalyzer.AnalyzeFile(file, refreshedBlocks).Suggestions);
+        OptimizationSuggestions = new ObservableCollection<OptimizationSuggestion>(_optimizationAnalyzer.AnalyzeFile(file, refreshedBlocks, _cachedForensicAnalysis).Suggestions);
         OnPropertyChanged(nameof(TotalAnimationText));
         UpdatePreview();
         RebuildMemoryLayout();
@@ -2333,6 +2412,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void MarkUnsavedChanges()
     {
+        _forensicCacheKey = null;
+        _cachedForensicAnalysis = null;
         HasUnsavedChanges = true;
         RaiseSaveStateChanged();
     }
@@ -2353,7 +2434,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _fullStructureGraph = _graphBuilder.BuildGraph(file, ranges, GraphLayoutMode);
         ApplyGraphFilters();
         RebuildMemoryLayout();
-        OptimizationSuggestions = new ObservableCollection<OptimizationSuggestion>(_optimizationAnalyzer.AnalyzeFile(file, ranges).Suggestions);
+        OptimizationSuggestions = new ObservableCollection<OptimizationSuggestion>(_optimizationAnalyzer.AnalyzeFile(file, ranges, _cachedForensicAnalysis).Suggestions);
         HexRows = _hexBuilder.Build(file.Bytes, _editPolicy);
         UpdatePreview();
         InitializePaletteEditor();
