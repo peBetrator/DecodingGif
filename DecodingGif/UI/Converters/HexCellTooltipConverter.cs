@@ -20,8 +20,31 @@ public sealed class HexCellTooltipConverter : IMultiValueConverter
             return $"Offset: 0x{absoluteOffset:X8}";
 
         var info = BlockColorPalette.Get(block.Kind);
-        return $"{info.Label}\nRange: 0x{block.Start:X8}..0x{block.EndInclusive:X8}\nSize: {block.Length} bytes\nByte: 0x{absoluteOffset:X8}";
+        string tooltip = $"{info.Label}\nRange: 0x{block.Start:X8}..0x{block.EndInclusive:X8}\nSize: {block.Length} bytes\nByte: 0x{absoluteOffset:X8}";
+
+        if (values.Length >= 4 && values[3] is ForensicAnalysisResult forensic && forensic.EvidenceChain.Count > 0)
+        {
+            string evidence = forensic.EvidenceChain
+                .FirstOrDefault(e => MatchesBlockKind(e.EvidenceType, block.Kind))?.Description
+                ?? forensic.KeyEvidence.FirstOrDefault()
+                ?? forensic.QuickSummary;
+
+            tooltip += $"\nForensics: {forensic.PrimaryCreator.SoftwareName} ({forensic.OverallConfidence:0}%)\n{evidence}";
+        }
+
+        return tooltip;
     }
+
+    private static bool MatchesBlockKind(EvidenceType evidenceType, GifBlockKind blockKind) =>
+        evidenceType switch
+        {
+            EvidenceType.ApplicationSignature => blockKind == GifBlockKind.ApplicationExtension,
+            EvidenceType.PalettePattern => blockKind is GifBlockKind.GlobalColorTable or GifBlockKind.LocalColorTable,
+            EvidenceType.TimingSignature => blockKind == GifBlockKind.GraphicControlExtension,
+            EvidenceType.BlockOrdering => blockKind is GifBlockKind.ImageDescriptor or GifBlockKind.GraphicControlExtension,
+            EvidenceType.CompressionStyle => blockKind == GifBlockKind.ImageData,
+            _ => false
+        };
 
     private static bool TryGetAbsoluteOffset(object[] values, out int absoluteOffset)
     {

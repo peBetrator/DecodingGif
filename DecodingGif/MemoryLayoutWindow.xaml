@@ -57,7 +57,7 @@
                                       ShowEmptySpace="{Binding ShowEmptySpace}"/>
         </ScrollViewer>
 
-        <GroupBox Grid.Row="2" Header="Memory Statistics" Margin="4">
+        <GroupBox Grid.Row="2" Header="Статистика memory layout" Margin="4">
             <StackPanel Margin="6,2">
                 <TextBlock Text="{Binding MemoryLayoutBuildStatusText}" FontWeight="SemiBold" Margin="0,0,0,4"/>
                 <WrapPanel>
@@ -88,6 +88,31 @@
                     <TextBlock Text="{Binding CreatorConfidenceText}" Margin="8,0"/>
                 </WrapPanel>
                 <TextBlock Text="{Binding CreatorEvidenceText}" Margin="8,2,8,0" TextWrapping="Wrap"/>
+
+                <GroupBox Header="Цифровая форензика" Margin="0,8,0,0">
+                    <StackPanel Margin="6,4">
+                        <TextBlock Text="{Binding CreatorAnalysis.PrimaryCreator.SoftwareName}" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding CreatorAnalysis.ConfidenceText}" Foreground="DarkBlue"/>
+                        <TextBlock Text="{Binding CreatorAnalysis.EstimatedEra}" FontSize="11"/>
+                        <TextBlock Text="{Binding CreatorAnalysis.ClassificationText}" FontSize="11" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding ForensicQuickSummaryText}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+
+                        <ItemsControl ItemsSource="{Binding CreatorAnalysis.KeyEvidence}" Margin="0,5,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="10" Foreground="Gray" TextWrapping="Wrap"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Text="{Binding CreatorAnalysis.AlternativeCandidatesText}"
+                                   Visibility="{Binding ForensicAlternativesVisibility}"
+                                   FontSize="10"
+                                   Foreground="DarkGray"
+                                   TextWrapping="Wrap"
+                                   Margin="0,5,0,0"/>
+                    </StackPanel>
+                </GroupBox>
             </StackPanel>
         </GroupBox>
     </Grid>

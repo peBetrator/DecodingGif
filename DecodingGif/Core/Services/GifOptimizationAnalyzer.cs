@@ -4,7 +4,10 @@ namespace DecodingGif.Core.Services;
 
 public sealed class GifOptimizationAnalyzer
 {
-    public OptimizationReport AnalyzeFile(GifFile file, IEnumerable<GifByteRange> blocks)
+    public OptimizationReport AnalyzeFile(
+        GifFile file,
+        IEnumerable<GifByteRange> blocks,
+        ForensicAnalysisResult? forensicAnalysis = null)
     {
         var report = new OptimizationReport();
         var ordered = blocks.OrderBy(b => b.Start).ToList();
@@ -13,8 +16,59 @@ public sealed class GifOptimizationAnalyzer
         AnalyzeAnimation(file, ordered, report);
         AnalyzeStructure(ordered, report);
         AnalyzeDataDensity(file, ordered, report);
+        AnalyzeForensicConsiderations(forensicAnalysis, report);
 
         return report;
+    }
+
+    private static void AnalyzeForensicConsiderations(ForensicAnalysisResult? forensicAnalysis, OptimizationReport report)
+    {
+        if (forensicAnalysis is null)
+            return;
+
+        if (forensicAnalysis.ProfessionalClassification == ProfessionalClassification.Amateur
+            && forensicAnalysis.OverallConfidence >= 55)
+        {
+            report.Suggestions.Add(new OptimizationSuggestion
+            {
+                Type = OptimizationType.StructureOrder,
+                Priority = SuggestionPriority.Medium,
+                Title = "Legacy encoding footprint",
+                Description = "Forensic analysis suggests an older or manually assembled export pipeline.",
+                Recommendation = "Re-encode with a modern optimizer to normalize block order, palette sizing, and compression behavior.",
+                Impact = forensicAnalysis.QuickSummary,
+                ImpactType = "Forensic quality"
+            });
+        }
+
+        if (forensicAnalysis.ProfessionalClassification == ProfessionalClassification.Automated
+            && forensicAnalysis.EvidenceChain.Any(e => e.EvidenceType == EvidenceType.TimingSignature))
+        {
+            report.Suggestions.Add(new OptimizationSuggestion
+            {
+                Type = OptimizationType.AnimationTiming,
+                Priority = SuggestionPriority.Low,
+                Title = "Preserve timing fingerprints",
+                Description = "The file contains timing signatures consistent with scripted or web-based generation.",
+                Recommendation = "When optimizing, preserve non-rounded delays if playback fidelity matters for analysis or reproduction.",
+                Impact = forensicAnalysis.QuickSummary,
+                ImpactType = "Forensic reproducibility"
+            });
+        }
+
+        if (forensicAnalysis.OverallConfidence < 45)
+        {
+            report.Suggestions.Add(new OptimizationSuggestion
+            {
+                Type = OptimizationType.StructureOrder,
+                Priority = SuggestionPriority.Low,
+                Title = "Unknown provenance",
+                Description = "Creator attribution confidence is low and the byte structure may mix signals from multiple tools.",
+                Recommendation = "Treat optimization results cautiously and keep an original copy for forensic comparison.",
+                Impact = forensicAnalysis.QuickSummary,
+                ImpactType = "Risk control"
+            });
+        }
     }
 
     private static void AnalyzeColorTables(GifFile file, IReadOnlyList<GifByteRange> blocks, OptimizationReport report)
