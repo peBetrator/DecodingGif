@@ -40,4 +40,5 @@ public sealed class MemoryLayoutBlock
     public double RelativeStart { get; init; }
     public double RelativeWidth { get; init; }
     public BlockPerformanceMetrics? PerformanceMetrics { get; init; }
+    public string AnimationInfo { get; init; } = string.Empty;
 }

@@ -6,6 +6,10 @@ using System.Windows.Input;
 using DecodingGif.Core.Models;
 using DecodingGif.Core.Services;
 using WinForms = System.Windows.Forms;
+using WpfBrush = System.Windows.Media.Brush;
+using WpfBrushes = System.Windows.Media.Brushes;
+using WpfColor = System.Windows.Media.Color;
+using WpfSolidColorBrush = System.Windows.Media.SolidColorBrush;
 
 namespace DecodingGif.UI.ViewModels;
 
@@ -14,8 +18,17 @@ public sealed class AnimationPropertiesEditorViewModel : INotifyPropertyChanged
     private sealed record DisposalOption(int Value, string Name, string Description);
 
     private readonly GifOptimizationAnalyzer _optimizationAnalyzer = new();
+    private readonly AnimationFPSAnalyzer _fpsAnalyzer = new();
     private readonly GifStructureService _structureService = new();
     private readonly FrameManagerService _frameManagerService = new();
+    private static readonly WpfBrush SmoothBrush = CreateFrozenBrush(0x15, 0x65, 0x3A);
+    private static readonly WpfBrush AcceptableBrush = CreateFrozenBrush(0x1D, 0x4E, 0x89);
+    private static readonly WpfBrush ChoppyBrush = CreateFrozenBrush(0xB4, 0x53, 0x09);
+    private static readonly WpfBrush VeryChoppyBrush = CreateFrozenBrush(0x99, 0x1B, 0x1B);
+    private static readonly WpfBrush ExcellentBrush = CreateFrozenBrush(0x15, 0x65, 0x3A);
+    private static readonly WpfBrush GoodBrush = CreateFrozenBrush(0x1D, 0x4E, 0x89);
+    private static readonly WpfBrush FairBrush = CreateFrozenBrush(0xB4, 0x53, 0x09);
+    private static readonly WpfBrush PoorBrush = CreateFrozenBrush(0x99, 0x1B, 0x1B);
     private readonly ObservableCollection<DisposalOption> _disposalOptions =
     [
         new(0, "0 - None", "No disposal specified. Renderer-dependent behavior."),
@@ -33,10 +46,12 @@ public sealed class AnimationPropertiesEditorViewModel : INotifyPropertyChanged
     private int _bulkDisposalMethod = 1;
     private bool _bulkHasTransparency;
     private int _bulkTransparentColorIndex;
+    private FPSAnalysisResult _fpsAnalysis = new();
 
     public ObservableCollection<EditableFrameSettings> Frames { get; } = [];
     public ObservableCollection<string> ValidationWarnings { get; } = [];
     public ObservableCollection<object> DisposalMethods { get; } = [];
+    public ObservableCollection<string> FPSRecommendations { get; } = [];
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public event EventHandler? SettingsApplied;
@@ -65,6 +80,7 @@ public sealed class AnimationPropertiesEditorViewModel : INotifyPropertyChanged
                 return;
             _bulkDelayMs = normalized;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(BulkDelayFpsPreviewText));
         }
     }
 
@@ -108,6 +124,42 @@ public sealed class AnimationPropertiesEditorViewModel : INotifyPropertyChanged
 
     public int SelectedFramesCount => Frames.Count(f => f.IsSelected);
     public bool HasFrames => Frames.Count > 0;
+    public FPSAnalysisResult FPSAnalysis
+    {
+        get => _fpsAnalysis;
+        private set
+        {
+            _fpsAnalysis = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasFPSAnalysis));
+            OnPropertyChanged(nameof(AverageFPSText));
+            OnPropertyChanged(nameof(FPSRangeText));
+            OnPropertyChanged(nameof(FPSVarianceText));
+            OnPropertyChanged(nameof(FPSPerformanceText));
+            OnPropertyChanged(nameof(FPSConsistencyText));
+            OnPropertyChanged(nameof(FPSConsistencyPercent));
+            OnPropertyChanged(nameof(FPSPerformanceBrush));
+            OnPropertyChanged(nameof(FPSConsistencyBrush));
+        }
+    }
+
+    public bool HasFPSAnalysis => HasFrames;
+    public string AverageFPSText => HasFrames ? $"{FPSAnalysis.AverageFPS:0.0} FPS" : "—";
+    public string FPSRangeText => HasFrames ? $"{FPSAnalysis.MinFPS:0.0} - {FPSAnalysis.MaxFPS:0.0} FPS" : "—";
+    public string FPSVarianceText => HasFrames ? $"{FPSAnalysis.FPSVariance:0.00}" : "—";
+    public string FPSPerformanceText => GetPerformanceLabel(FPSAnalysis.PerformanceRating);
+    public string FPSConsistencyText => HasFrames ? $"{GetConsistencyLabel(FPSAnalysis.ConsistencyRating)} ({FPSConsistencyPercent:0}%)" : "—";
+    public double FPSConsistencyPercent => Math.Clamp(100.0 - (FPSAnalysis.FPSVariance * 20.0), 0.0, 100.0);
+    public WpfBrush FPSPerformanceBrush => GetPerformanceBrush(FPSAnalysis.PerformanceRating);
+    public WpfBrush FPSConsistencyBrush => GetConsistencyBrush(FPSAnalysis.ConsistencyRating);
+    public string BulkDelayFpsPreviewText
+    {
+        get
+        {
+            double fps = 1000.0 / Math.Max(10.0, BulkDelayMs);
+            return $"Массовая задержка {BulkDelayMs} мс даст примерно {fps:0.0} FPS на выбранных кадрах.";
+        }
+    }
 
     public ICommand ApplyBulkCommand { get; }
     public ICommand SelectAllFramesCommand { get; }
@@ -164,6 +216,7 @@ public sealed class AnimationPropertiesEditorViewModel : INotifyPropertyChanged
 
         BuildFrameSettings();
         UpdateTimelineBars();
+        UpdateFPSAnalysis();
         RefreshValidationWarnings();
         RaiseComputedProperties();
     }
@@ -243,6 +296,7 @@ public sealed class AnimationPropertiesEditorViewModel : INotifyPropertyChanged
             }
 
             UpdateTimelineBars();
+            UpdateFPSAnalysis();
             RefreshValidationWarnings();
             RaiseSettingsApplied();
         }
@@ -280,6 +334,7 @@ public sealed class AnimationPropertiesEditorViewModel : INotifyPropertyChanged
             {
                 WriteFrameToGce(frame);
                 UpdateTimelineBars();
+                UpdateFPSAnalysis();
                 RefreshValidationWarnings();
                 RaiseSettingsApplied();
             }
@@ -326,6 +381,14 @@ public sealed class AnimationPropertiesEditorViewModel : INotifyPropertyChanged
                 ValidationWarnings.Add($"Frame {frame.FrameIndex + 1}: disposal {frame.DisposalMethod} is reserved.");
         }
 
+        if (FPSAnalysis.AverageFPS is > 0 and < 6)
+            ValidationWarnings.Add($"FPS: средняя частота {FPSAnalysis.AverageFPS:0.0} FPS даёт очень дёрганое воспроизведение.");
+        else if (FPSAnalysis.AverageFPS is >= 6 and < 12)
+            ValidationWarnings.Add($"FPS: средняя частота {FPSAnalysis.AverageFPS:0.0} FPS всё ещё выглядит рвано.");
+
+        if (FPSAnalysis.FPSVariance > 4.0)
+            ValidationWarnings.Add($"FPS: нестабильный тайминг кадров (отклонение {FPSAnalysis.FPSVariance:0.00}).");
+
         var suggestions = _optimizationAnalyzer.AnalyzeFile(_file, _blocks).Suggestions
             .Where(s => s.Type is OptimizationType.AnimationTiming or OptimizationType.DisposalMethod)
             .Select(s => $"{s.Title}: {s.Recommendation}");
@@ -342,6 +405,25 @@ public sealed class AnimationPropertiesEditorViewModel : INotifyPropertyChanged
             double factor = frame.DelayMs / (double)maxDelay;
             frame.TimelineBarWidth = 24 + (factor * 180);
         }
+    }
+
+    private void UpdateFPSAnalysis()
+    {
+        var analysisFrames = Frames
+            .OrderBy(frame => frame.FrameIndex)
+            .Select(frame => new GifByteRange(
+                GifBlockKind.ImageDescriptor,
+                $"Frame {frame.FrameIndex + 1}",
+                0,
+                0,
+                frame.FrameIndex,
+                frame.DelayMs))
+            .ToList();
+
+        FPSAnalysis = _fpsAnalyzer.Analyze(analysisFrames);
+        FPSRecommendations.Clear();
+        foreach (string recommendation in FPSAnalysis.Recommendations)
+            FPSRecommendations.Add(recommendation);
     }
 
     private void SelectAllFrames()
@@ -492,12 +574,16 @@ public sealed class AnimationPropertiesEditorViewModel : INotifyPropertyChanged
                 item.PropertyChanged -= Frame_PropertyChanged;
         }
 
+        UpdateFPSAnalysis();
+        if (_file is not null)
+            RefreshValidationWarnings();
         RaiseComputedProperties();
     }
 
     private void RaiseComputedProperties()
     {
         OnPropertyChanged(nameof(HasFrames));
+        OnPropertyChanged(nameof(HasFPSAnalysis));
         OnPropertyChanged(nameof(SelectedFramesCount));
         (ApplyBulkCommand as RelayCommand)?.RaiseCanExecuteChanged();
         (SelectAllFramesCommand as RelayCommand)?.RaiseCanExecuteChanged();
@@ -534,6 +620,53 @@ public sealed class AnimationPropertiesEditorViewModel : INotifyPropertyChanged
             HasTransparency: (packed & 0b0000_0001) != 0,
             TransparentColorIndex: transparentIndex);
         return true;
+    }
+
+    private static string GetPerformanceLabel(FPSPerformanceRating rating) =>
+        rating switch
+        {
+            FPSPerformanceRating.Smooth => "Плавно",
+            FPSPerformanceRating.Acceptable => "Приемлемо",
+            FPSPerformanceRating.Choppy => "Рвано",
+            FPSPerformanceRating.VeryChoppy => "Очень рвано",
+            _ => "—"
+        };
+
+    private static string GetConsistencyLabel(FPSConsistencyRating rating) =>
+        rating switch
+        {
+            FPSConsistencyRating.Excellent => "Отличная стабильность",
+            FPSConsistencyRating.Good => "Хорошая стабильность",
+            FPSConsistencyRating.Fair => "Средняя стабильность",
+            FPSConsistencyRating.Poor => "Плохая стабильность",
+            _ => "—"
+        };
+
+    private static WpfBrush GetPerformanceBrush(FPSPerformanceRating rating) =>
+        rating switch
+        {
+            FPSPerformanceRating.Smooth => SmoothBrush,
+            FPSPerformanceRating.Acceptable => AcceptableBrush,
+            FPSPerformanceRating.Choppy => ChoppyBrush,
+            FPSPerformanceRating.VeryChoppy => VeryChoppyBrush,
+            _ => WpfBrushes.Gray
+        };
+
+    private static WpfBrush GetConsistencyBrush(FPSConsistencyRating rating) =>
+        rating switch
+        {
+            FPSConsistencyRating.Excellent => ExcellentBrush,
+            FPSConsistencyRating.Good => GoodBrush,
+            FPSConsistencyRating.Fair => FairBrush,
+            FPSConsistencyRating.Poor => PoorBrush,
+            _ => WpfBrushes.Gray
+        };
+
+    private static WpfBrush CreateFrozenBrush(byte r, byte g, byte b)
+    {
+        var brush = new WpfSolidColorBrush(WpfColor.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>

@@ -344,6 +344,9 @@ public sealed class MemoryLayoutControl : FrameworkElement
             $"Visible range: 0x{block.StartOffset:X8}..0x{visibleEnd:X8}\n" +
             $"Visible size: {block.Length} bytes";
 
+        if (!string.IsNullOrWhiteSpace(block.AnimationInfo))
+            baseText += $"\nAnimation: {block.AnimationInfo}";
+
         if (block.PerformanceMetrics is null)
         {
             if (block.Title == "..." && block.FullName.Contains("collapsed", StringComparison.OrdinalIgnoreCase))

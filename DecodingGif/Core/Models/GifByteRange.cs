@@ -1,6 +1,12 @@
 ﻿namespace DecodingGif.Core.Models;
 
-public sealed record GifByteRange(GifBlockKind Kind, string Name, int Start, int Length)
+public sealed record GifByteRange(
+    GifBlockKind Kind,
+    string Name,
+    int Start,
+    int Length,
+    int? FrameIndex = null,
+    int? DelayMs = null)
 {
     public int EndExclusive => Start + Length;
     public int EndInclusive => Start + Length - 1;

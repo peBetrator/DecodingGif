@@ -2241,9 +2241,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (file is null)
             return;
 
-        FrameTimeline = _animation.BuildFrameTimeline(file, Blocks);
+        var refreshedBlocks = _structure.BuildRanges(file).ToList();
+        Blocks = new ObservableCollection<GifByteRange>(refreshedBlocks);
+        FrameTimeline = _animation.BuildFrameTimeline(file, refreshedBlocks);
+        OptimizationSuggestions = new ObservableCollection<OptimizationSuggestion>(_optimizationAnalyzer.AnalyzeFile(file, refreshedBlocks).Suggestions);
         OnPropertyChanged(nameof(TotalAnimationText));
         UpdatePreview();
+        RebuildMemoryLayout();
 
         int? selectedOffset = SelectedByte?.Offset;
         if (selectedOffset.HasValue)

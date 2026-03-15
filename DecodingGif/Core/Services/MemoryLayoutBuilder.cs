@@ -168,7 +168,8 @@ public sealed class MemoryLayoutBuilder
             RelativeStart = relativeStart,
             RelativeWidth = relativeWidth,
             IsCompressed = isCompressed,
-            PerformanceMetrics = perf
+            PerformanceMetrics = perf,
+            AnimationInfo = BuildAnimationInfo(block)
         };
     }
 
@@ -226,6 +227,16 @@ public sealed class MemoryLayoutBuilder
             (byte)Math.Clamp(b, 0, 255)));
         brush.Freeze();
         return brush;
+    }
+
+    private static string BuildAnimationInfo(GifByteRange block)
+    {
+        if (!block.DelayMs.HasValue)
+            return string.Empty;
+
+        double fps = 1000.0 / Math.Max(10.0, block.DelayMs.Value);
+        string frameLabel = block.FrameIndex.HasValue ? $"Кадр {block.FrameIndex.Value + 1}" : "Кадр";
+        return $"{frameLabel}: задержка {block.DelayMs.Value} мс, около {fps:0.0} FPS";
     }
 
     private static List<MemoryLayoutRow> CollapseRepetitiveRows(IReadOnlyList<MemoryLayoutRow> rows, int bytesPerRow)

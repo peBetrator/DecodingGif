@@ -128,6 +128,81 @@ public sealed class GifOptimizationAnalyzer
                 ImpactType = "Performance"
             });
         }
+
+        var frameBlocks = BuildFrameTimingRanges(file, blocks);
+
+        if (frameBlocks.Count == 0)
+            return;
+
+        var fpsAnalyzer = new AnimationFPSAnalyzer();
+        var fps = fpsAnalyzer.Analyze(frameBlocks);
+        if (fps.AverageFPS < 12)
+        {
+            report.Suggestions.Add(new OptimizationSuggestion
+            {
+                Type = OptimizationType.AnimationTiming,
+                Priority = fps.AverageFPS < 6 ? SuggestionPriority.High : SuggestionPriority.Medium,
+                Title = "Low animation FPS",
+                Description = $"Average playback speed is about {fps.AverageFPS:0.0} FPS.",
+                Recommendation = "Lower frame delays or simplify overly long pauses to improve perceived smoothness.",
+                Impact = $"Range {fps.MinFPS:0.0}-{fps.MaxFPS:0.0} FPS, consistency {fps.ConsistencyRating}",
+                ImpactType = "Animation smoothness"
+            });
+        }
+
+        if (fps.FPSVariance >= 2.0)
+        {
+            report.Suggestions.Add(new OptimizationSuggestion
+            {
+                Type = OptimizationType.AnimationTiming,
+                Priority = fps.FPSVariance >= 4.0 ? SuggestionPriority.Medium : SuggestionPriority.Low,
+                Title = "Inconsistent frame pacing",
+                Description = $"Frame pacing deviation is {fps.FPSVariance:0.00} FPS.",
+                Recommendation = "Normalize neighboring delays to reduce visible timing jumps between frames.",
+                Impact = $"Consistency rating: {fps.ConsistencyRating}",
+                ImpactType = "Playback stability"
+            });
+        }
+    }
+
+    private static List<GifByteRange> BuildFrameTimingRanges(GifFile file, IReadOnlyList<GifByteRange> blocks)
+    {
+        var result = new List<GifByteRange>();
+        GifByteRange? pendingGce = null;
+        int frameIndex = 0;
+
+        foreach (var block in blocks.OrderBy(b => b.Start))
+        {
+            if (block.Kind == GifBlockKind.GraphicControlExtension)
+            {
+                pendingGce = block;
+                continue;
+            }
+
+            if (block.Kind != GifBlockKind.ImageDescriptor)
+                continue;
+
+            int delayMs = 0;
+            if (pendingGce is not null && TryReadDelayMs(file.Bytes, pendingGce, out int parsedDelay))
+                delayMs = parsedDelay;
+
+            result.Add(new GifByteRange(block.Kind, block.Name, block.Start, block.Length, frameIndex, delayMs));
+            frameIndex++;
+            pendingGce = null;
+        }
+
+        return result;
+    }
+
+    private static bool TryReadDelayMs(byte[] bytes, GifByteRange gce, out int delayMs)
+    {
+        delayMs = 0;
+        if (gce.Length < 8 || gce.Start < 0 || gce.Start + 5 >= bytes.Length)
+            return false;
+
+        ushort delayCs = (ushort)(bytes[gce.Start + 4] | (bytes[gce.Start + 5] << 8));
+        delayMs = delayCs * 10;
+        return true;
     }
 
     private static void AnalyzeStructure(IReadOnlyList<GifByteRange> blocks, OptimizationReport report)
