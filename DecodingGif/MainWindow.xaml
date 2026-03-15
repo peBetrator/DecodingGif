@@ -203,12 +203,12 @@
                 <GroupBox Header="Animation Playback" Margin="0,0,0,12">
                     <StackPanel Orientation="Vertical" Margin="5">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5">
-                            <Button Command="{Binding RestartCommand}" Content="?" Width="30" Height="30" ToolTip="Restart Animation"/>
-                            <Button Command="{Binding StepBackwardCommand}" Content="?" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Step Backward"/>
-                            <Button Command="{Binding PlayCommand}" Content="?" Width="35" Height="30" Margin="4,0,0,0" ToolTip="Play Animation"/>
-                            <Button Command="{Binding PauseCommand}" Content="?" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Pause Animation"/>
-                            <Button Command="{Binding StopCommand}" Content="?" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Stop Animation"/>
-                            <Button Command="{Binding StepForwardCommand}" Content="?" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Step Forward"/>
+                            <Button Command="{Binding RestartCommand}" Content="&#x23EE;" Width="30" Height="30" ToolTip="Restart Animation"/>
+                            <Button Command="{Binding StepBackwardCommand}" Content="&#x23EA;" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Step Backward"/>
+                            <Button Command="{Binding PlayCommand}" Content="&#x25B6;" Width="35" Height="30" Margin="4,0,0,0" ToolTip="Play Animation"/>
+                            <Button Command="{Binding PauseCommand}" Content="&#x23F8;" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Pause Animation"/>
+                            <Button Command="{Binding StopCommand}" Content="&#x23F9;" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Stop Animation"/>
+                            <Button Command="{Binding StepForwardCommand}" Content="&#x23E9;" Width="30" Height="30" Margin="4,0,0,0" ToolTip="Step Forward"/>
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5">

@@ -16,6 +16,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <DataGrid Grid.Row="0"
@@ -102,6 +103,48 @@
                     </ItemsControl>
                 </ScrollViewer>
             </GroupBox>
+
+            <GroupBox Grid.Row="2" Header="FPS-анализ" Margin="0,8,0,0">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="170"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Средний FPS:" Margin="0,0,8,6"/>
+                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
+                        <TextBlock Text="{Binding AverageFPSText}" FontWeight="SemiBold" Margin="0,0,8,0"/>
+                        <TextBlock Text="{Binding FPSPerformanceText}" Foreground="{Binding FPSPerformanceBrush}" FontWeight="SemiBold"/>
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Диапазон FPS:" Margin="0,0,8,6"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding FPSRangeText}" Margin="0,0,0,6"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Стабильность:" Margin="0,0,8,6"/>
+                    <StackPanel Grid.Row="2" Grid.Column="1">
+                        <TextBlock Text="{Binding FPSConsistencyText}" Foreground="{Binding FPSConsistencyBrush}" Margin="0,0,0,4"/>
+                        <ProgressBar Value="{Binding FPSConsistencyPercent, Mode=OneWay}" Maximum="100" Height="14"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Margin="0,8,0,0">
+                        <TextBlock Text="{Binding FPSVarianceText, StringFormat=Отклонение FPS: {0}}" Margin="0,0,0,6"/>
+                        <TextBlock Text="Рекомендации:" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <ItemsControl ItemsSource="{Binding FPSRecommendations}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Grid>
+            </GroupBox>
         </Grid>
 
         <Grid Grid.Column="1">
@@ -116,6 +159,7 @@
                     <TextBlock Text="{Binding SelectedFramesCount, StringFormat=Selected frames: {0}}" Margin="0,0,0,6"/>
                     <TextBlock Text="Delay (ms)"/>
                     <TextBox Text="{Binding BulkDelayMs, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,6"/>
+                    <TextBlock Text="{Binding BulkDelayFpsPreviewText}" TextWrapping="Wrap" Foreground="#475569" Margin="0,0,0,8"/>
 
                     <TextBlock Text="Disposal"/>
                     <ComboBox ItemsSource="{Binding DisposalMethods}"

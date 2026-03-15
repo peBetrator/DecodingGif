@@ -8,6 +8,8 @@ public sealed class GifStructureService
     {
         var bytes = file.Bytes;
         var ranges = new List<GifByteRange>();
+        GifByteRange? pendingGce = null;
+        int frameIndex = 0;
 
         // 1) Header + LSD
         ranges.Add(new GifByteRange(GifBlockKind.Header, "Header (Signature+Version)", 0, 6));
@@ -61,7 +63,9 @@ public sealed class GifStructureService
                 {
                     // Graphic Control Extension: 21 F9 04 [4 bytes] 00
                     int len = ReadGraphicControlExtensionLength(bytes, offset);
-                    ranges.Add(new GifByteRange(GifBlockKind.GraphicControlExtension, "Graphic Control Extension (GCE)", offset, len));
+                    int? delayMs = TryReadGraphicControlDelayMs(bytes, offset, len);
+                    pendingGce = new GifByteRange(GifBlockKind.GraphicControlExtension, "Graphic Control Extension (GCE)", offset, len, frameIndex, delayMs);
+                    ranges.Add(pendingGce);
                     offset += len;
                     continue;
                 }
@@ -92,7 +96,8 @@ public sealed class GifStructureService
                     break;
                 }
 
-                ranges.Add(new GifByteRange(GifBlockKind.ImageDescriptor, "Image Descriptor", offset, 10));
+                int? frameDelayMs = pendingGce?.DelayMs;
+                ranges.Add(new GifByteRange(GifBlockKind.ImageDescriptor, "Image Descriptor", offset, 10, frameIndex, frameDelayMs));
 
                 byte packed = bytes[offset + 9];
                 bool lctFlag = (packed & 0b1000_0000) != 0;
@@ -107,18 +112,20 @@ public sealed class GifStructureService
 
                     if (offset + lctLen > bytes.Length)
                     {
-                        ranges.Add(new GifByteRange(GifBlockKind.LocalColorTable, $"Local Color Table (LCT) x{lctSize} (truncated)", offset, Math.Max(0, bytes.Length - offset)));
+                        ranges.Add(new GifByteRange(GifBlockKind.LocalColorTable, $"Local Color Table (LCT) x{lctSize} (truncated)", offset, Math.Max(0, bytes.Length - offset), frameIndex, frameDelayMs));
                         break;
                     }
 
-                    ranges.Add(new GifByteRange(GifBlockKind.LocalColorTable, $"Local Color Table (LCT) x{lctSize}", offset, lctLen));
+                    ranges.Add(new GifByteRange(GifBlockKind.LocalColorTable, $"Local Color Table (LCT) x{lctSize}", offset, lctLen, frameIndex, frameDelayMs));
                     offset += lctLen;
                 }
 
                 // Image Data: LZW min code size + sub-blocks chain until 0x00
                 int imageDataLen = ReadImageDataLength(bytes, offset);
-                ranges.Add(new GifByteRange(GifBlockKind.ImageData, "Image Data (LZW sub-blocks)", offset, imageDataLen));
+                ranges.Add(new GifByteRange(GifBlockKind.ImageData, "Image Data (LZW sub-blocks)", offset, imageDataLen, frameIndex, frameDelayMs));
                 offset += imageDataLen;
+                frameIndex++;
+                pendingGce = null;
 
                 continue;
             }
@@ -440,6 +447,15 @@ public sealed class GifStructureService
             return expected;
 
         return bytes.Length - start;
+    }
+
+    private static int? TryReadGraphicControlDelayMs(byte[] bytes, int start, int length)
+    {
+        if (length < 8 || start < 0 || start + 5 >= bytes.Length)
+            return null;
+
+        ushort delayCs = (ushort)(bytes[start + 4] | (bytes[start + 5] << 8));
+        return delayCs * 10;
     }
 
     private static int ReadApplicationExtensionLength(byte[] bytes, int start)
