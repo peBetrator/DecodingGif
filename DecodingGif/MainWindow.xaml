@@ -114,9 +114,18 @@
                     HeadersVisibility="Column"
                     SelectionMode="Single"
                     SelectionUnit="Cell"
+                    PreviewMouseRightButtonDown="HexGrid_PreviewMouseRightButtonDown"
                     MouseMove="HexGrid_MouseMove"
                     MouseLeave="HexGrid_MouseLeave"
                     SelectedCellsChanged="HexGrid_SelectedCellsChanged">
+
+                    <DataGrid.ContextMenu>
+                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                            <MenuItem Header="{Binding DeleteBlockMenuText}"
+                                      Command="{Binding DeleteSelectedBlockCommand}"
+                                      IsEnabled="{Binding CanDeleteSelectedBlock}"/>
+                        </ContextMenu>
+                    </DataGrid.ContextMenu>
 
                     <DataGrid.CellStyle>
                         <Style TargetType="DataGridCell">

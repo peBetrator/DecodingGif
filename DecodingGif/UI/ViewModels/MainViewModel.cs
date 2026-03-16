@@ -39,6 +39,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly HexRowsBuilder _hexBuilder = new();
     private readonly GifStructureService _structure = new();
     private readonly GifAnimationService _animation = new();
+    private readonly BlockDeletionService _blockDeletionService = new();
     private readonly StructureDependencyGraphBuilder _graphBuilder = new();
     private readonly MemoryLayoutBuilder _memoryLayoutBuilder = new();
     private readonly PerformanceAnalyzer _performanceAnalyzer = new();
@@ -75,6 +76,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly RelayCommand _redoRelayCommand;
     private readonly RelayCommand _saveChangesRelayCommand;
     private readonly RelayCommand _resetChangesRelayCommand;
+    private readonly RelayCommand _deleteSelectedBlockRelayCommand;
     private readonly RelayCommand _startTutorialRelayCommand;
     private readonly RelayCommand _nextTutorialStepRelayCommand;
     private readonly RelayCommand _previousTutorialStepRelayCommand;
@@ -891,6 +893,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private GifByteRange? _selectedBlockForDeletion;
+    public GifByteRange? SelectedBlockForDeletion
+    {
+        get => _selectedBlockForDeletion;
+        private set
+        {
+            _selectedBlockForDeletion = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanDeleteSelectedBlock));
+            OnPropertyChanged(nameof(DeleteBlockMenuText));
+        }
+    }
+
+    public bool CanDeleteSelectedBlock => CurrentFile is not null && SelectedBlockForDeletion is not null;
+
+    public string DeleteBlockMenuText =>
+        SelectedBlockForDeletion is null
+            ? "Удалить блок"
+            : $"Удалить блок {SelectedBlockForDeletion.Name} ({SelectedBlockForDeletion.Length} байт)";
+
     private GifByteRange? _selectedColorTableRange;
     private int? _selectedColorBaseOffset;
     private byte[] _lzwCompressedFrameData = [];
@@ -1139,6 +1161,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand ResetGraphLayoutCommand { get; }
     public ICommand UndoCommand { get; }
     public ICommand RedoCommand { get; }
+    public ICommand DeleteSelectedBlockCommand { get; }
     public ICommand SaveChangesCommand { get; }
     public ICommand ResetChangesCommand { get; }
     public ICommand InsertFrameCommand { get; }
@@ -1183,6 +1206,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OpenFileCommand = new RelayCommand(OpenFile);
         _undoRelayCommand = new RelayCommand(UndoLastOperation, () => _undoRedoManager.CanUndo);
         _redoRelayCommand = new RelayCommand(RedoLastOperation, () => _undoRedoManager.CanRedo);
+        _deleteSelectedBlockRelayCommand = new RelayCommand(DeleteSelectedBlock, () => CanDeleteSelectedBlock);
         _saveChangesRelayCommand = new RelayCommand(() => _ = SaveChanges(), () => CurrentFile is not null && HasUnsavedChanges);
         _resetChangesRelayCommand = new RelayCommand(ResetChangesToOriginal, () => CurrentFile is not null && HasUnsavedChanges);
         _prevFrameRelayCommand = new RelayCommand(SelectPrevFrame, CanStepBackward);
@@ -1218,6 +1242,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ResetGraphLayoutCommand = _resetGraphLayoutRelayCommand;
         UndoCommand = _undoRelayCommand;
         RedoCommand = _redoRelayCommand;
+        DeleteSelectedBlockCommand = _deleteSelectedBlockRelayCommand;
         SaveChangesCommand = _saveChangesRelayCommand;
         ResetChangesCommand = _resetChangesRelayCommand;
         InsertFrameCommand = _frameEditor.InsertFrameCommand;
@@ -1292,6 +1317,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SelectedByte = null;
         HoveredByteOffset = null;
         SelectedByteMeaning = null;
+        SelectedBlockForDeletion = null;
         ClearSelectedColorInfo();
         ClearSelectedGceInfo();
         ClearSelectedLsdInfo();
@@ -1384,6 +1410,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ClearSelectedColorInfo();
             ClearSelectedGceInfo();
             ClearSelectedLsdInfo();
+            SelectedBlockForDeletion = null;
             InitializePaletteEditor();
             InitializeAnimationPropertiesEditor();
             InitializeFrameEditor();
@@ -1400,6 +1427,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (CurrentFile is null)
         {
             SelectedByte = null;
+            SelectedBlockForDeletion = null;
             ClearSelectedColorInfo();
             ClearSelectedGceInfo();
             ClearSelectedLsdInfo();
@@ -1411,6 +1439,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (offset < 0 || offset >= bytes.Length)
         {
             SelectedByte = null;
+            SelectedBlockForDeletion = null;
             ClearSelectedColorInfo();
             ClearSelectedGceInfo();
             ClearSelectedLsdInfo();
@@ -1432,6 +1461,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         UpdateSelectedColorInfo(offset);
         UpdateSelectedGceInfo(offset);
         UpdateSelectedLsdInfo(offset);
+    }
+
+    public void SetDeleteTargetOffset(int? offset)
+    {
+        if (!offset.HasValue)
+        {
+            SelectedBlockForDeletion = null;
+            RaiseDeleteBlockChanged();
+            return;
+        }
+
+        SelectedBlockForDeletion = ResolveBlockAtOffset(offset.Value);
+        RaiseDeleteBlockChanged();
     }
 
     public void SetSelectedLctRange(GifByteRange? range)
@@ -2375,8 +2417,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 WinForms.MessageBoxIcon.Warning) != WinForms.DialogResult.Yes)
             return;
 
-        Array.Copy(_originalBytes, CurrentFile.Bytes, Math.Min(_originalBytes.Length, CurrentFile.Bytes.Length));
-        ReloadFromCurrentFileBytes();
+        var restoredBytes = (byte[])_originalBytes.Clone();
+        var restoredFile = _parser.Parse(CurrentFile.FilePath, restoredBytes);
+        var restoredRanges = _structure.BuildRanges(restoredFile).ToList();
+        ApplyEditedFile(restoredFile, restoredRanges);
+        _undoRedoManager.Clear();
+        RaiseUndoRedoChanged();
         HasUnsavedChanges = false;
         RaiseSaveStateChanged();
     }
@@ -2427,10 +2473,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void ApplyEditedFile(GifFile file, IReadOnlyList<GifByteRange> ranges)
     {
         CurrentFile = file;
+        SelectedBlockForDeletion = null;
         Blocks = new ObservableCollection<GifByteRange>(ranges);
         StructureRoots = new ObservableCollection<GifStructureNode>(_structure.BuildStructureTree(file));
         GctRange = ranges.FirstOrDefault(r => r.Kind == GifBlockKind.GlobalColorTable);
         FrameTimeline = _animation.BuildFrameTimeline(file, ranges);
+        IsInfiniteLoopInFile = _animation.IsInfiniteLoop(file, ranges);
+        IsLooping = IsInfiniteLoopInFile;
         _fullStructureGraph = _graphBuilder.BuildGraph(file, ranges, GraphLayoutMode);
         ApplyGraphFilters();
         RebuildMemoryLayout();
@@ -2440,7 +2489,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         InitializePaletteEditor();
         InitializeAnimationPropertiesEditor();
         InitializeFrameEditor();
+        InitializeLzwPlaybackSession();
         RaisePlaybackCanExecuteChanged();
+        RaiseDeleteBlockChanged();
     }
 
     private void ReloadFromCurrentFileBytes()
@@ -2815,12 +2866,53 @@ public sealed class MainViewModel : INotifyPropertyChanged
         RaiseUndoRedoChanged();
     }
 
+    private void DeleteSelectedBlock()
+    {
+        var file = CurrentFile;
+        var block = SelectedBlockForDeletion;
+        if (file is null || block is null)
+            return;
+
+        var command = new DeleteBlockCommand(
+            _blockDeletionService,
+            file,
+            block,
+            ApplyDeletedBlockState,
+            $"Delete {block.Name} ({block.Length} bytes)");
+
+        _undoRedoManager.Execute(command);
+        MarkUnsavedChanges();
+        RaiseUndoRedoChanged();
+    }
+
     private void ExecuteColorCommand(IUndoableCommand command, int fallbackOffset)
     {
         _undoRedoManager.Execute(command);
         MarkUnsavedChanges();
         RefreshAfterEdit(fallbackOffset);
         RaiseUndoRedoChanged();
+    }
+
+    private void ApplyDeletedBlockState(GifFile file, IReadOnlyList<GifByteRange> ranges, int? fallbackOffset)
+    {
+        ApplyEditedFile(file, ranges);
+        SelectedLctRange = null;
+        int? targetOffset = fallbackOffset;
+        if (targetOffset.HasValue && file.Bytes.Length > 0)
+        {
+            int clampedOffset = Math.Clamp(targetOffset.Value, 0, file.Bytes.Length - 1);
+            SelectByte(clampedOffset);
+            SetDeleteTargetOffset(clampedOffset);
+            return;
+        }
+
+        SelectedByte = null;
+        SelectedByteMeaning = null;
+        SelectedBlockForDeletion = null;
+        ClearSelectedColorInfo();
+        ClearSelectedGceInfo();
+        ClearSelectedLsdInfo();
+        RaiseDeleteBlockChanged();
     }
 
     public void ReplaceColorInSelectedTable(ColorRgb fromColor, ColorRgb toColor)
@@ -2867,6 +2959,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
         int refreshOffset = SelectedByte?.Offset ?? _selectedColorBaseOffset ?? fallbackOffset ?? 0;
         refreshOffset = Math.Clamp(refreshOffset, 0, Math.Max(0, file.Bytes.Length - 1));
         SelectByte(refreshOffset);
+    }
+
+    private GifByteRange? ResolveBlockAtOffset(int offset) =>
+        Blocks.FirstOrDefault(block => block.Contains(offset));
+
+    private void RaiseDeleteBlockChanged()
+    {
+        _deleteSelectedBlockRelayCommand.RaiseCanExecuteChanged();
+        OnPropertyChanged(nameof(CanDeleteSelectedBlock));
+        OnPropertyChanged(nameof(DeleteBlockMenuText));
     }
 
     public void UpdatePreview()
