@@ -134,6 +134,21 @@ public partial class MainWindow
         vm.SelectByte(absoluteOffset);
     }
 
+    private void HexGrid_PreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        if (!TryGetOffsetUnderMouse(e.OriginalSource as DependencyObject, out int offset))
+        {
+            vm.SetDeleteTargetOffset(null);
+            return;
+        }
+
+        vm.SelectByte(offset);
+        vm.SetDeleteTargetOffset(offset);
+    }
+
     private void HexGrid_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (DataContext is not MainViewModel vm)
