@@ -8,8 +8,10 @@ namespace DecodingGif.Core.Models;
 
 public sealed class HexRow : INotifyPropertyChanged
 {
+    private static readonly string[] HexByteLookup = BuildHexByteLookup();
     private readonly byte[] _bytes;
     private readonly IByteEditPolicy _policy;
+    private readonly HexCellVisualInfo[] _cellVisuals;
     private string _ascii = string.Empty;
 
     public int Offset { get; }
@@ -44,12 +46,13 @@ public sealed class HexRow : INotifyPropertyChanged
         }
     }
 
-    public HexRow(int offset, byte[] bytes, IByteEditPolicy policy)
+    public HexRow(int offset, byte[] bytes, IByteEditPolicy policy, IReadOnlyList<GifByteRange>? blocks = null, int maxBlockLength = 1)
     {
         Offset = offset;
         OffsetHex = offset.ToString("X8");
         _bytes = bytes;
         _policy = policy;
+        _cellVisuals = BuildCellVisuals(blocks, Math.Max(1, maxBlockLength));
         Ascii = BuildAsciiRow();
     }
 
@@ -66,12 +69,25 @@ public sealed class HexRow : INotifyPropertyChanged
         return true;
     }
 
+    public bool TryGetCellVisualInfo(int index, out HexCellVisualInfo info)
+    {
+        info = default;
+        if (index < 0 || index >= 16)
+            return false;
+
+        if (!TryGetAbsoluteOffset(index, out _))
+            return false;
+
+        info = _cellVisuals[index];
+        return true;
+    }
+
     private string GetHex(int index)
     {
         if (!TryGetByte(index, out byte value))
             return string.Empty;
 
-        return value.ToString("X2");
+        return HexByteLookup[value];
     }
 
     private void SetHex(int index, string? input, string propertyName)
@@ -145,6 +161,67 @@ public sealed class HexRow : INotifyPropertyChanged
             sb.Append(b is >= 0x20 and <= 0x7E ? (char)b : '.');
         }
         return sb.ToString();
+    }
+
+    private static string[] BuildHexByteLookup()
+    {
+        var lookup = new string[256];
+        for (int i = 0; i < lookup.Length; i++)
+            lookup[i] = i.ToString("X2");
+        return lookup;
+    }
+
+    private HexCellVisualInfo[] BuildCellVisuals(IReadOnlyList<GifByteRange>? blocks, int maxBlockLength)
+    {
+        var visuals = new HexCellVisualInfo[16];
+        if (blocks is null || blocks.Count == 0)
+            return visuals;
+
+        for (int i = 0; i < visuals.Length; i++)
+        {
+            if (!TryGetAbsoluteOffset(i, out int absoluteOffset))
+                continue;
+
+            var block = FindContainingBlock(blocks, absoluteOffset);
+            if (block is null)
+                continue;
+
+            double sizeFactor = 0.75 + (Math.Min(block.Length, maxBlockLength) / (double)maxBlockLength * 0.5);
+            visuals[i] = new HexCellVisualInfo(
+                HasBlock: true,
+                Kind: block.Kind,
+                SizeFactor: sizeFactor,
+                IsLeftBoundary: absoluteOffset == block.Start,
+                IsRightBoundary: absoluteOffset == block.EndInclusive);
+        }
+
+        return visuals;
+    }
+
+    private static GifByteRange? FindContainingBlock(IReadOnlyList<GifByteRange> blocks, int offset)
+    {
+        int lo = 0;
+        int hi = blocks.Count - 1;
+        while (lo <= hi)
+        {
+            int mid = lo + ((hi - lo) / 2);
+            var candidate = blocks[mid];
+            if (offset < candidate.Start)
+            {
+                hi = mid - 1;
+                continue;
+            }
+
+            if (offset >= candidate.EndExclusive)
+            {
+                lo = mid + 1;
+                continue;
+            }
+
+            return candidate;
+        }
+
+        return null;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

@@ -7,66 +7,51 @@ namespace DecodingGif.UI.Converters;
 
 public sealed class HexCellBackgroundConverter : IMultiValueConverter
 {
-    private static int? _lastActiveOffset;
-    private static HexBlockLookup? _lastLookup;
-    private static GifByteRange? _lastActiveRange;
-
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        if (!TryGetAbsoluteOffset(values, out int absoluteOffset))
+        if (!TryGetCell(values, out var row, out int index, out int absoluteOffset))
             return BlockColorPalette.BuildBrush(GifBlockKind.Unknown, false, 0.1);
 
-        int? selectedOffset = values.Length >= 4 && values[3] is int so ? so : null;
-        int? hoveredOffset = values.Length >= 5 && values[4] is int ho ? ho : null;
+        int? selectedOffset = values.Length >= 3 && values[2] is int so ? so : null;
+        int? activeRangeStart = values.Length >= 4 && values[3] is int rs ? rs : null;
+        int? activeRangeEnd = values.Length >= 5 && values[4] is int re ? re : null;
 
         if (selectedOffset.HasValue && absoluteOffset == selectedOffset.Value)
             return BlockColorPalette.SelectedByteBrush();
 
-        if (values.Length < 3 || values[2] is not IEnumerable<GifByteRange> blocks)
+        if (!row.TryGetCellVisualInfo(index, out var visual) || !visual.HasBlock)
             return BlockColorPalette.BuildBrush(GifBlockKind.Unknown, false, 0.1);
 
-        var lookup = HexBlockLookupCache.Get(blocks);
-        var block = lookup.FindContaining(absoluteOffset);
-        if (block is null)
-            return BlockColorPalette.BuildBrush(GifBlockKind.Unknown, false, 0.1);
+        bool isActive = activeRangeStart.HasValue
+            && activeRangeEnd.HasValue
+            && absoluteOffset >= activeRangeStart.Value
+            && absoluteOffset <= activeRangeEnd.Value;
 
-        var activeRange = GetActiveRange(lookup, hoveredOffset ?? selectedOffset);
-        bool isActive = activeRange is not null && activeRange.Contains(absoluteOffset);
-        double sizeFactor = 0.75 + (Math.Min(block.Length, lookup.MaxBlockLength) / (double)lookup.MaxBlockLength * 0.5);
-        return BlockColorPalette.BuildBrush(block.Kind, isActive, sizeFactor);
+        return BlockColorPalette.BuildBrush(visual.Kind, isActive, visual.SizeFactor);
     }
 
-    private static GifByteRange? GetActiveRange(HexBlockLookup lookup, int? activeOffset)
+    private static bool TryGetCell(object[] values, out HexRow row, out int index, out int absoluteOffset)
     {
-        if (!activeOffset.HasValue)
-            return null;
-
-        if (_lastLookup == lookup && _lastActiveOffset == activeOffset.Value)
-            return _lastActiveRange;
-
-        var range = lookup.GetCompleteRangeForOffset(activeOffset.Value);
-        _lastLookup = lookup;
-        _lastActiveOffset = activeOffset.Value;
-        _lastActiveRange = range;
-        return range;
-    }
-
-    private static bool TryGetAbsoluteOffset(object[] values, out int absoluteOffset)
-    {
+        row = null!;
+        index = -1;
         absoluteOffset = -1;
-        if (values.Length < 2 || values[0] is not int rowOffset)
+        if (values.Length < 2 || values[0] is not HexRow hexRow)
             return false;
 
         if (values[1] is not string header || header.Length != 2)
             return false;
 
-        if (!int.TryParse(header, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int index))
+        if (!int.TryParse(header, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out index))
             return false;
 
         if (index is < 0 or > 15)
             return false;
 
-        absoluteOffset = rowOffset + index;
+        if (!hexRow.TryGetByte(index, out _))
+            return false;
+
+        row = hexRow;
+        absoluteOffset = row.Offset + index;
         return true;
     }
 

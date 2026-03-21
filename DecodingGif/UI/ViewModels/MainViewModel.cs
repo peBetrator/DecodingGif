@@ -19,6 +19,7 @@ using DecodingGif.Core.Services;
 using DecodingGif.UI.Tutorial;
 using DecodingGif.UI.UndoRedo;
 using DecodingGif.UI.UndoRedo.Commands;
+using DecodingGif.UI.Visualization;
 using Win32OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using Win32SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 
@@ -109,6 +110,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     public int? SelectedByteOffset => SelectedByte?.Offset;
+
+    private int? _selectedActiveRangeStart;
+    public int? SelectedActiveRangeStart
+    {
+        get => _selectedActiveRangeStart;
+        private set { _selectedActiveRangeStart = value; OnPropertyChanged(); }
+    }
+
+    private int? _selectedActiveRangeEnd;
+    public int? SelectedActiveRangeEnd
+    {
+        get => _selectedActiveRangeEnd;
+        private set { _selectedActiveRangeEnd = value; OnPropertyChanged(); }
+    }
 
     private int? _hoveredByteOffset;
     public int? HoveredByteOffset
@@ -410,6 +425,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(CreatorEraText));
             OnPropertyChanged(nameof(CreatorConfidenceText));
             OnPropertyChanged(nameof(CreatorEvidenceText));
+            if (SelectedByteOffset.HasValue)
+                UpdateSelectedForensicInfo(SelectedByteOffset.Value);
         }
     }
 
@@ -693,6 +710,62 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool HasSelectedByteMeaning =>
         !string.IsNullOrWhiteSpace(SelectedByteMeaning);
+
+    private string? _selectedBlockLabel;
+    public string? SelectedBlockLabel
+    {
+        get => _selectedBlockLabel;
+        private set
+        {
+            _selectedBlockLabel = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasSelectedBlockInfo));
+        }
+    }
+
+    private string? _selectedBlockRangeText;
+    public string? SelectedBlockRangeText
+    {
+        get => _selectedBlockRangeText;
+        private set
+        {
+            _selectedBlockRangeText = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasSelectedBlockInfo));
+        }
+    }
+
+    private string? _selectedBlockSizeText;
+    public string? SelectedBlockSizeText
+    {
+        get => _selectedBlockSizeText;
+        private set
+        {
+            _selectedBlockSizeText = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasSelectedBlockInfo));
+        }
+    }
+
+    public bool HasSelectedBlockInfo =>
+        !string.IsNullOrWhiteSpace(SelectedBlockLabel)
+        || !string.IsNullOrWhiteSpace(SelectedBlockRangeText)
+        || !string.IsNullOrWhiteSpace(SelectedBlockSizeText);
+
+    private string? _selectedByteForensicsText;
+    public string? SelectedByteForensicsText
+    {
+        get => _selectedByteForensicsText;
+        private set
+        {
+            _selectedByteForensicsText = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasSelectedByteForensics));
+        }
+    }
+
+    public bool HasSelectedByteForensics =>
+        !string.IsNullOrWhiteSpace(SelectedByteForensicsText);
 
     private string? _selectedGceLabel;
     public string? SelectedGceLabel
@@ -1269,6 +1342,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ExitTutorialCommand = _exitTutorialRelayCommand;
         _paletteEditor.ColorChanged += OnPaletteColorChanged;
         _paletteEditor.BatchOperationRequested += OnPaletteBatchOperationRequested;
+        _animationPropertiesEditor.PropertyChanged += AnimationPropertiesEditor_PropertyChanged;
         _animationPropertiesEditor.SettingsApplied += OnAnimationPropertiesApplied;
         _animationPropertiesEditor.FrameEdited += OnFrameEdited;
         _frameEditor.FrameEdited += OnFrameEdited;
@@ -1278,6 +1352,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
         RaiseUndoRedoChanged();
         RaisePlaybackCanExecuteChanged();
         RaiseLzwPlaybackCanExecuteChanged();
+    }
+
+    private void AnimationPropertiesEditor_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(AnimationPropertiesEditorViewModel.SelectedFrameIndex))
+            return;
+
+        if (FrameCount <= 0)
+            return;
+
+        SetSelectedFrameIndex(_animationPropertiesEditor.SelectedFrameIndex);
     }
 
     private bool _isPaletteEditingEnabled;
@@ -1360,7 +1445,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(SelectedFrameIndex));
             OnPropertyChanged(nameof(FrameLabel));
 
-            HexRows = _hexBuilder.Build(bytes, _editPolicy);
+            HexRows = _hexBuilder.Build(bytes, _editPolicy, ranges);
             UpdatePreview();
             InitializePaletteEditor();
             InitializeAnimationPropertiesEditor();
@@ -1428,6 +1513,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             SelectedByte = null;
             SelectedBlockForDeletion = null;
+            ClearSelectedActiveRange();
+            ClearSelectedBlockInfo();
+            ClearSelectedForensicInfo();
             ClearSelectedColorInfo();
             ClearSelectedGceInfo();
             ClearSelectedLsdInfo();
@@ -1440,6 +1528,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             SelectedByte = null;
             SelectedBlockForDeletion = null;
+            ClearSelectedActiveRange();
+            ClearSelectedBlockInfo();
+            ClearSelectedForensicInfo();
             ClearSelectedColorInfo();
             ClearSelectedGceInfo();
             ClearSelectedLsdInfo();
@@ -1458,6 +1549,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Ascii: ascii
         );
         SelectedByteMeaning = _structure.DescribeOffset(CurrentFile, offset);
+        UpdateSelectedActiveRange(offset);
+        UpdateSelectedBlockInfo(offset);
+        UpdateSelectedForensicInfo(offset);
         UpdateSelectedColorInfo(offset);
         UpdateSelectedGceInfo(offset);
         UpdateSelectedLsdInfo(offset);
@@ -2347,7 +2441,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (file is null)
             return;
 
-        HexRows = _hexBuilder.Build(file.Bytes, _editPolicy);
+        HexRows = _hexBuilder.Build(file.Bytes, _editPolicy, Blocks);
         UpdatePreview();
         RebuildMemoryLayout();
 
@@ -2364,6 +2458,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         var refreshedBlocks = _structure.BuildRanges(file).ToList();
         Blocks = new ObservableCollection<GifByteRange>(refreshedBlocks);
+        HexRows = _hexBuilder.Build(file.Bytes, _editPolicy, refreshedBlocks);
         FrameTimeline = _animation.BuildFrameTimeline(file, refreshedBlocks);
         OptimizationSuggestions = new ObservableCollection<OptimizationSuggestion>(_optimizationAnalyzer.AnalyzeFile(file, refreshedBlocks, _cachedForensicAnalysis).Suggestions);
         OnPropertyChanged(nameof(TotalAnimationText));
@@ -2484,7 +2579,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ApplyGraphFilters();
         RebuildMemoryLayout();
         OptimizationSuggestions = new ObservableCollection<OptimizationSuggestion>(_optimizationAnalyzer.AnalyzeFile(file, ranges, _cachedForensicAnalysis).Suggestions);
-        HexRows = _hexBuilder.Build(file.Bytes, _editPolicy);
+        HexRows = _hexBuilder.Build(file.Bytes, _editPolicy, ranges);
         UpdatePreview();
         InitializePaletteEditor();
         InitializeAnimationPropertiesEditor();
@@ -3104,6 +3199,80 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _selectedColorBaseOffset = baseOffset;
         OnPropertyChanged(nameof(SelectedColorCanEdit));
     }
+
+    private void UpdateSelectedBlockInfo(int offset)
+    {
+        var block = ResolveBlockAtOffset(offset);
+        if (block is null)
+        {
+            ClearSelectedBlockInfo();
+            return;
+        }
+
+        SelectedBlockLabel = $"Block: {block.Name}";
+        SelectedBlockRangeText = $"Range: 0x{block.Start:X8}..0x{block.EndInclusive:X8}";
+        SelectedBlockSizeText = $"Size: {block.Length} bytes";
+    }
+
+    private void ClearSelectedBlockInfo()
+    {
+        SelectedBlockLabel = null;
+        SelectedBlockRangeText = null;
+        SelectedBlockSizeText = null;
+    }
+
+    private void UpdateSelectedActiveRange(int offset)
+    {
+        var range = HexBlockLookupCache.Get(Blocks).GetCompleteRangeForOffset(offset);
+        if (range is null)
+        {
+            ClearSelectedActiveRange();
+            return;
+        }
+
+        SelectedActiveRangeStart = range.Start;
+        SelectedActiveRangeEnd = range.EndInclusive;
+    }
+
+    private void ClearSelectedActiveRange()
+    {
+        SelectedActiveRangeStart = null;
+        SelectedActiveRangeEnd = null;
+    }
+
+    private void UpdateSelectedForensicInfo(int offset)
+    {
+        var block = ResolveBlockAtOffset(offset);
+        if (block is null || CreatorAnalysis.EvidenceChain.Count == 0)
+        {
+            ClearSelectedForensicInfo();
+            return;
+        }
+
+        string evidence = CreatorAnalysis.EvidenceChain
+            .FirstOrDefault(entry => MatchesBlockKind(entry.EvidenceType, block.Kind))?.Description
+            ?? CreatorAnalysis.KeyEvidence.FirstOrDefault()
+            ?? CreatorAnalysis.QuickSummary;
+
+        SelectedByteForensicsText =
+            $"Forensics: {CreatorAnalysis.PrimaryCreator.SoftwareName} ({CreatorAnalysis.OverallConfidence:0}%)\n{evidence}";
+    }
+
+    private void ClearSelectedForensicInfo()
+    {
+        SelectedByteForensicsText = null;
+    }
+
+    private static bool MatchesBlockKind(EvidenceType evidenceType, GifBlockKind blockKind) =>
+        evidenceType switch
+        {
+            EvidenceType.ApplicationSignature => blockKind == GifBlockKind.ApplicationExtension,
+            EvidenceType.PalettePattern => blockKind is GifBlockKind.GlobalColorTable or GifBlockKind.LocalColorTable,
+            EvidenceType.TimingSignature => blockKind == GifBlockKind.GraphicControlExtension,
+            EvidenceType.BlockOrdering => blockKind is GifBlockKind.ImageDescriptor or GifBlockKind.GraphicControlExtension,
+            EvidenceType.CompressionStyle => blockKind == GifBlockKind.ImageData,
+            _ => false
+        };
 
     private int? FindFrameIndexForRange(GifByteRange range)
     {
