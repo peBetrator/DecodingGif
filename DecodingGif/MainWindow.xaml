@@ -13,7 +13,6 @@
     <Window.Resources>
         <conv:HexCellBackgroundConverter x:Key="HexCellBackgroundConverter"/>
         <conv:HexCellBorderConverter x:Key="HexCellBorderConverter"/>
-        <conv:HexCellTooltipConverter x:Key="HexCellTooltipConverter"/>
         <conv:HexCellIsReadOnlyConverter x:Key="HexCellIsReadOnlyConverter"/>
         <conv:PriorityColorConverter x:Key="PriorityColorConverter"/>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
@@ -133,35 +132,24 @@
                             <Setter Property="Background">
                                 <Setter.Value>
                                     <MultiBinding Converter="{StaticResource HexCellBackgroundConverter}">
-                                        <!-- 0: row offset -->
-                                        <Binding Path="Offset"/>
+                                        <!-- 0: row -->
+                                        <Binding Path="."/>
                                         <!-- 1: column header -->
                                         <Binding RelativeSource="{RelativeSource Self}" Path="Column.Header"/>
-                                        <!-- 2: blocks list -->
-                                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.Blocks"/>
-                                        <!-- 3: selected byte offset -->
+                                        <!-- 2: selected byte offset -->
                                         <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.SelectedByteOffset"/>
-                                        <!-- 4: hovered byte offset -->
-                                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.HoveredByteOffset"/>
+                                        <!-- 3: selected active range start -->
+                                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.SelectedActiveRangeStart"/>
+                                        <!-- 4: selected active range end -->
+                                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.SelectedActiveRangeEnd"/>
                                     </MultiBinding>
                                 </Setter.Value>
                             </Setter>
                             <Setter Property="BorderThickness">
                                 <Setter.Value>
                                     <MultiBinding Converter="{StaticResource HexCellBorderConverter}">
-                                        <Binding Path="Offset"/>
+                                        <Binding Path="."/>
                                         <Binding RelativeSource="{RelativeSource Self}" Path="Column.Header"/>
-                                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.Blocks"/>
-                                    </MultiBinding>
-                                </Setter.Value>
-                            </Setter>
-                            <Setter Property="ToolTip">
-                                <Setter.Value>
-                                    <MultiBinding Converter="{StaticResource HexCellTooltipConverter}">
-                                        <Binding Path="Offset"/>
-                                        <Binding RelativeSource="{RelativeSource Self}" Path="Column.Header"/>
-                                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.Blocks"/>
-                                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.CreatorAnalysis"/>
                                     </MultiBinding>
                                 </Setter.Value>
                             </Setter>
@@ -255,62 +243,68 @@
                     <Button Content="Duplicate" Command="{Binding DuplicateFrameCommand}" Width="80" Margin="8,0,0,0"/>
                 </StackPanel>
 
-                <TextBlock Text="Info" FontWeight="Bold" Margin="0,0,0,6"/>
+                <GroupBox Header="Inspector" Margin="0,0,0,12">
+                    <StackPanel Margin="8,6">
+                        <Border BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="4" Padding="8">
+                            <StackPanel>
+                                <TextBlock Text="Selected Byte" FontWeight="Bold" Margin="0,0,0,6"/>
+                                <StackPanel DataContext="{Binding SelectedByte}">
+                                    <TextBlock Text="{Binding OffsetHex, StringFormat=Offset (hex): {0}}" />
+                                    <TextBlock Text="{Binding Offset, StringFormat=Offset (dec): {0}}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding ValueHex, StringFormat=Value (hex): {0}}" Margin="0,6,0,0"/>
+                                    <TextBlock Text="{Binding ValueDec, StringFormat=Value (dec): {0}}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding Ascii, StringFormat=ASCII: {0}}" Margin="0,6,0,0"/>
+                                </StackPanel>
 
-                    <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                <Separator Margin="0,10,0,10"/>
 
-                <TextBlock Text="Selected byte:" FontWeight="Bold" Margin="0,0,0,6"/>
+                                <StackPanel Visibility="{Binding HasSelectedBlockInfo, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <TextBlock Text="Block" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding SelectedBlockLabel}" />
+                                    <TextBlock Text="{Binding SelectedBlockRangeText}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding SelectedBlockSizeText}" Margin="0,2,0,0"/>
+                                </StackPanel>
 
-                <StackPanel DataContext="{Binding SelectedByte}">
-                    <TextBlock Text="{Binding OffsetHex, StringFormat=Offset (hex): {0}}" />
-                    <TextBlock Text="{Binding Offset, StringFormat=Offset (dec): {0}}" Margin="0,2,0,0"/>
-                    <TextBlock Text="{Binding ValueHex, StringFormat=Value (hex): {0}}" Margin="0,8,0,0"/>
-                    <TextBlock Text="{Binding ValueDec, StringFormat=Value (dec): {0}}" Margin="0,2,0,0"/>
-                    <TextBlock Text="{Binding Ascii, StringFormat=ASCII: {0}}" Margin="0,8,0,0"/>
-                </StackPanel>
+                                <StackPanel Visibility="{Binding HasSelectedByteMeaning, Converter={StaticResource BoolToVisibilityConverter}}" Margin="0,10,0,0">
+                                    <TextBlock Text="Meaning" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding SelectedByteMeaning}" TextWrapping="Wrap"/>
+                                </StackPanel>
 
-                <StackPanel Visibility="{Binding HasSelectedColorInfo, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBlock Text="Color:" FontWeight="Bold" Margin="0,14,0,6"/>
-                    <StackPanel>
-                        <TextBlock Text="{Binding SelectedColorTableLabel}" />
-                        <TextBlock Text="{Binding SelectedColorIndex, StringFormat=Color index: {0}}" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding SelectedColorChannel}" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding SelectedColorRgbText}" Margin="0,2,0,0"/>
-                        <Border Width="48" Height="20" BorderBrush="Gray" BorderThickness="1" Background="{Binding SelectedColorBrush}" Margin="0,6,0,0"/>
-                        <Button Content="Pick color" Command="{Binding PickColorCommand}" IsEnabled="{Binding SelectedColorCanEdit}" Width="100" Margin="0,6,0,0"/>
+                                <StackPanel Visibility="{Binding HasSelectedGceInfo, Converter={StaticResource BoolToVisibilityConverter}}" Margin="0,10,0,0">
+                                    <TextBlock Text="Graphic Control Extension" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding SelectedGceLabel}" />
+                                    <TextBlock Text="{Binding SelectedGceDelayText}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding SelectedGceDisposalText}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding SelectedGceTransparencyText}" Margin="0,2,0,0"/>
+                                </StackPanel>
+
+                                <StackPanel Visibility="{Binding HasSelectedLsdInfo, Converter={StaticResource BoolToVisibilityConverter}}" Margin="0,10,0,0">
+                                    <TextBlock Text="Logical Screen Descriptor" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding SelectedLsdLabel}" />
+                                    <TextBlock Text="{Binding SelectedLsdDimensions}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding SelectedLsdGctPresent}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding SelectedLsdGctSize}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding SelectedLsdColorResolution}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding SelectedLsdSortFlag}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding SelectedLsdBackgroundIndex}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding SelectedLsdPixelAspect}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding SelectedLsdBackgroundRgb}" Margin="0,2,0,0"/>
+                                    <Border Width="48" Height="20" BorderBrush="Gray" BorderThickness="1" Background="{Binding SelectedLsdBackgroundBrush}" Margin="0,6,0,0"/>
+                                </StackPanel>
+
+                                <StackPanel Visibility="{Binding HasSelectedColorInfo, Converter={StaticResource BoolToVisibilityConverter}}" Margin="0,10,0,0">
+                                    <TextBlock Text="Color" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding SelectedColorTableLabel}" />
+                                    <TextBlock Text="{Binding SelectedColorIndex, StringFormat=Color index: {0}}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding SelectedColorChannel}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding SelectedColorRgbText}" Margin="0,2,0,0"/>
+                                    <Border Width="48" Height="20" BorderBrush="Gray" BorderThickness="1" Background="{Binding SelectedColorBrush}" Margin="0,6,0,0"/>
+                                    <Button Content="Pick color" Command="{Binding PickColorCommand}" IsEnabled="{Binding SelectedColorCanEdit}" Width="100" Margin="0,6,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                </StackPanel>
-
-                <StackPanel Visibility="{Binding HasSelectedByteMeaning, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBlock Text="Meaning:" FontWeight="Bold" Margin="0,14,0,6"/>
-                    <TextBlock Text="{Binding SelectedByteMeaning}" TextWrapping="Wrap"/>
-                </StackPanel>
-
-                <StackPanel Visibility="{Binding HasSelectedGceInfo, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBlock Text="GCE:" FontWeight="Bold" Margin="0,14,0,6"/>
-                    <StackPanel>
-                        <TextBlock Text="{Binding SelectedGceLabel}" />
-                        <TextBlock Text="{Binding SelectedGceDelayText}" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding SelectedGceDisposalText}" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding SelectedGceTransparencyText}" Margin="0,2,0,0"/>
-                    </StackPanel>
-                </StackPanel>
-
-                <StackPanel Visibility="{Binding HasSelectedLsdInfo, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBlock Text="LSD:" FontWeight="Bold" Margin="0,14,0,6"/>
-                    <StackPanel>
-                        <TextBlock Text="{Binding SelectedLsdLabel}" />
-                        <TextBlock Text="{Binding SelectedLsdDimensions}" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding SelectedLsdGctPresent}" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding SelectedLsdGctSize}" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding SelectedLsdColorResolution}" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding SelectedLsdSortFlag}" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding SelectedLsdBackgroundIndex}" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding SelectedLsdPixelAspect}" Margin="0,2,0,0"/>
-                        <TextBlock Text="{Binding SelectedLsdBackgroundRgb}" Margin="0,2,0,0"/>
-                        <Border Width="48" Height="20" BorderBrush="Gray" BorderThickness="1" Background="{Binding SelectedLsdBackgroundBrush}" Margin="0,6,0,0"/>
-                    </StackPanel>
-                </StackPanel>
+                </GroupBox>
 
                 <TextBlock Text="Structure:" FontWeight="Bold" Margin="0,14,0,6"/>
 
@@ -513,7 +507,7 @@
                                         <TextBlock Text="{Binding LZWAnimationSpeed, StringFormat={}{0} ms}"
                                                    Margin="8,0,0,0"
                                                    VerticalAlignment="Center"/>
-                                        <CheckBox Content="?????????? ?????? ????? ????"
+                                        <CheckBox Content="Показывать только новые коды"
                                                   IsChecked="{Binding ShowOnlyNewLzwCodes}"
                                                   Margin="14,0,0,0"
                                                   VerticalAlignment="Center"/>

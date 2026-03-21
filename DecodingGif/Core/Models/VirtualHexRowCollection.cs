@@ -7,17 +7,21 @@ public sealed class VirtualHexRowCollection : IList<HexRow>, IList, IReadOnlyLis
 {
     private readonly byte[] _bytes;
     private readonly IByteEditPolicy _policy;
+    private readonly IReadOnlyList<GifByteRange> _blocks;
     private readonly int _bytesPerRow;
     private readonly int _cacheSize;
+    private readonly int _maxBlockLength;
     private readonly Dictionary<int, (HexRow Row, LinkedListNode<int> Node)> _cache = new();
     private readonly LinkedList<int> _lru = new();
 
-    public VirtualHexRowCollection(byte[] bytes, IByteEditPolicy policy, int bytesPerRow = 16, int cacheSize = 2048)
+    public VirtualHexRowCollection(byte[] bytes, IByteEditPolicy policy, IReadOnlyList<GifByteRange>? blocks = null, int bytesPerRow = 16, int cacheSize = 2048)
     {
         _bytes = bytes ?? [];
         _policy = policy;
+        _blocks = blocks ?? [];
         _bytesPerRow = Math.Max(1, bytesPerRow);
         _cacheSize = Math.Max(128, cacheSize);
+        _maxBlockLength = _blocks.Count == 0 ? 1 : Math.Max(1, _blocks.Max(b => b.Length));
         Count = _bytes.Length == 0 ? 0 : (int)Math.Ceiling(_bytes.Length / (double)_bytesPerRow);
     }
 
@@ -107,7 +111,7 @@ public sealed class VirtualHexRowCollection : IList<HexRow>, IList, IReadOnlyLis
         }
 
         int offset = index * _bytesPerRow;
-        var row = new HexRow(offset, _bytes, _policy);
+        var row = new HexRow(offset, _bytes, _policy, _blocks, _maxBlockLength);
         var node = _lru.AddFirst(index);
         _cache[index] = (row, node);
         TrimCacheIfNeeded();
